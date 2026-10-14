@@ -49,6 +49,8 @@
     .sheet { margin: 16px 0; }
     .sheet h3 { margin: 0 0 6px; font-size: 15px; }
     svg { width: 100%; height: auto; display: block; }
+    svg[data-corners] { cursor: crosshair; touch-action: none; }
+    .measure { pointer-events: none; }
     .project { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: end; }
     .project input { width: 220px; }
     #projectStatus { font-size: 13px; color: #666; align-self: center; }
@@ -599,6 +601,7 @@
       }
       for (const g of groups) html += renderGroup(g);
       results.innerHTML = html;
+      measure = null; // any measurement belonged to the old diagrams
     }
 
     function renderGroup({ material, sheets, unplaced, stats }) {
@@ -629,7 +632,14 @@
       const { length: L, width: W, trim: t } = material;
       const font = Math.max(L, W) / 60;
       const c = colorOf(material.color);
-      let out = `<svg viewBox="-2 -2 ${L + 4} ${W + 4}" xmlns="http://www.w3.org/2000/svg">
+      // Snap targets for the measuring tool: sheet, trim and panel corners.
+      const corners = new Set();
+      const addCorners = (x, y, w, h) => [[x, y], [x + w, y], [x, y + h], [x + w, y + h]].forEach(([cx, cy]) => corners.add(`${cx},${cy}`));
+      addCorners(0, 0, L, W);
+      if (t > 0) addCorners(t, t, L - 2 * t, W - 2 * t);
+      for (const p of s.placements) addCorners(p.x, p.y, p.w, p.h);
+      let out = `<svg viewBox="-2 -2 ${L + 4} ${W + 4}" xmlns="http://www.w3.org/2000/svg"
+        data-corners="${[...corners].join(';')}" data-length="${L}" data-width="${W}">
         <rect x="0" y="0" width="${L}" height="${W}" fill="#d9d9d9" stroke="#555" stroke-width="2"/>`;
       if (t > 0) {
         out += `<rect x="${t}" y="${t}" width="${L - 2 * t}" height="${W - 2 * t}" fill="#ececec" stroke="#b33" stroke-width="1" stroke-dasharray="8 6"/>`;
@@ -652,6 +662,121 @@
       }
       return out + '</svg>';
     }
+
+    // ---- Measuring tool --------------------------------------------------------------------
+    // Click a corner to start; a dotted line follows the mouse (snapping to nearby corners) with
+    // a distance label. The next click, or Escape, clears it.
+
+    const SNAP_PX = 10;
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    let measure = null; // { svg, start: {x, y} } while measuring
+    let hoverSvg = null;
+
+    const pxPerUnit = (svg) => svg.getScreenCTM().a;
+    const toSvg = (svg, e) => new DOMPoint(e.clientX, e.clientY).matrixTransform(svg.getScreenCTM().inverse());
+
+    function cornersOf(svg) {
+      svg._corners ??= svg.dataset.corners.split(';').map((c) => {
+        const [x, y] = c.split(',').map(Number);
+        return { x, y };
+      });
+      return svg._corners;
+    }
+
+    function nearestCorner(svg, p) {
+      let best = null;
+      let bestDist = SNAP_PX / pxPerUnit(svg);
+      for (const c of cornersOf(svg)) {
+        const d = Math.hypot(c.x - p.x, c.y - p.y);
+        if (d <= bestDist) {
+          best = c;
+          bestDist = d;
+        }
+      }
+      return best;
+    }
+
+    function overlay(svg) {
+      let g = svg.querySelector('.measure');
+      if (!g) {
+        g = document.createElementNS(SVG_NS, 'g');
+        g.setAttribute('class', 'measure');
+        g.innerHTML = '<line class="m-line"/><circle class="m-start"/><circle class="m-snap"/><rect class="m-bg"/><text class="m-text"/>';
+        svg.append(g);
+      }
+      return g;
+    }
+
+    const attrs = (el, values) => Object.entries(values).forEach(([k, v]) => el.setAttribute(k, v));
+    const show = (el, visible) => el.setAttribute('visibility', visible ? 'visible' : 'hidden');
+
+    // Draw the snap ring, and the measurement if one is in progress on this diagram.
+    function drawMeasure(svg, pointer) {
+      const g = overlay(svg);
+      const u = 1 / pxPerUnit(svg); // one screen pixel in diagram units
+      const snap = pointer && nearestCorner(svg, pointer);
+      const [line, startDot, snapRing, bg, text] = g.children;
+
+      show(snapRing, !!snap);
+      if (snap) attrs(snapRing, { cx: snap.x, cy: snap.y, r: 6 * u, fill: 'none', stroke: '#c53030', 'stroke-width': 2 * u });
+
+      // Without a pointer (mouse left the diagram) an active measurement stays where it was.
+      const active = measure && measure.svg === svg;
+      show(startDot, active);
+      if (!active) for (const el of [line, bg, text]) show(el, false);
+      if (!active || !pointer) return;
+      for (const el of [line, bg, text]) show(el, true);
+      const { start } = measure;
+      attrs(startDot, { cx: start.x, cy: start.y, r: 4 * u, fill: '#c53030' });
+
+      const end = snap || pointer;
+      attrs(line, { x1: start.x, y1: start.y, x2: end.x, y2: end.y, stroke: '#111', 'stroke-width': 1.5 * u,
+        'stroke-dasharray': `${6 * u} ${4 * u}` });
+
+      const dx = Math.abs(end.x - start.x);
+      const dy = Math.abs(end.y - start.y);
+      const label = `${fmt(Math.hypot(dx, dy))}  (Δx ${fmt(dx)}, Δy ${fmt(dy)})`;
+      const size = 13 * u;
+      const pad = 4 * u;
+      attrs(text, { 'font-size': size, fill: '#111' });
+      text.textContent = label;
+      const w = text.getComputedTextLength() + 2 * pad; // measure the label as rendered
+      const h = size + 2 * pad;
+      // Beside the cursor, flipped to stay inside the sheet.
+      let x = end.x + 12 * u;
+      let y = end.y - 12 * u - h;
+      if (x + w > Number(svg.dataset.length)) x = end.x - 12 * u - w;
+      if (y < 0) y = end.y + 12 * u;
+      attrs(bg, { x, y, width: w, height: h, rx: 3 * u, fill: '#fff', 'fill-opacity': 0.92, stroke: '#111', 'stroke-width': u });
+      attrs(text, { x: x + pad, y: y + pad + size * 0.82 });
+    }
+
+    function clearMeasure() {
+      if (!measure) return;
+      const { svg } = measure;
+      measure = null;
+      drawMeasure(svg, null);
+    }
+
+    results.addEventListener('pointermove', (e) => {
+      const svg = e.target.closest('svg[data-corners]');
+      if (hoverSvg && hoverSvg !== svg) drawMeasure(hoverSvg, null);
+      hoverSvg = svg;
+      if (svg) drawMeasure(svg, toSvg(svg, e));
+    });
+    results.addEventListener('pointerleave', () => {
+      if (hoverSvg && hoverSvg !== measure?.svg) drawMeasure(hoverSvg, null);
+      hoverSvg = null;
+    });
+    results.addEventListener('click', (e) => {
+      if (measure) return clearMeasure();
+      const svg = e.target.closest('svg[data-corners]');
+      const corner = svg && nearestCorner(svg, toSvg(svg, e));
+      if (!corner) return;
+      measure = { svg, start: corner };
+      drawMeasure(svg, toSvg(svg, e));
+    });
+    document.addEventListener('keydown', (e) => e.key === 'Escape' && clearMeasure());
 
     // Text measurement for diagram labels (SVG text uses the page font).
     const measureCtx = document.createElement('canvas').getContext('2d');

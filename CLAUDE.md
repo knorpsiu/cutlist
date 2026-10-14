@@ -57,5 +57,6 @@ There is no test suite yet. Verify changes like this:
 - **Colour picker:** a custom popover (native `<select>` can't show colours on macOS) backed by a hidden `<select class="color">` that holds the value. The toggle-close logic uses `pointerdown` state, because light dismiss closes the popover before the button's click fires.
 - **Numeric inputs:** these are `type="text"` with class `num`, so formulas can be typed. Read them through `num()`/`int()`, never `parseFloat`.
 - **Colours:** materials store the palette's hex `fill` value. Unknown colours, e.g. from the old wood-tone palette, are replaced with a default on load.
+- **Measuring tool:** each sheet `<svg>` carries `data-corners` (snap points) and `data-length`. The overlay is a `<g class="measure">` added lazily, with `pointer-events: none`. Overlay sizes are in screen pixels converted through `getScreenCTM()`. The label box is sized with `getComputedTextLength()`, because canvas measurement doesn't match the SVG text exactly.
 - **PDF text:** WinAnsi only. Characters outside Latin-1 (plus €, –, —, …, quotes, •) print as "?".
 - Background dev servers started from a Claude session stop after 2 hours. The user usually runs `npm run dev` in their own terminal.

@@ -63,7 +63,7 @@ Each iteration should be usable end-to-end.
 - Invalid formulas keep the text, are highlighted red with the reason in a tooltip, and block Optimize until fixed.
 - Evaluated by a small hand-written parser (`public/formula.js`), never `eval`.
 
-### MVP-5 — PDF export (current)
+### MVP-5 — PDF export ✅
 - "Export PDF" button downloads `<project name>.pdf` directly (no print dialog), from the current form state (saved or not).
 - Contents (A4 portrait): title block with logo, project name, export date and kerf; sheet goods table (name, colour, thickness, length, width, qty, edge trim); panels table (#, label, length, width, qty, material); then the cut layouts per material (stats, panels that didn't fit, one diagram per sheet).
 - Tables continue across pages with repeated headers; a material heading is kept on the same page as its first sheet; footer with project name and "Page n of N".
@@ -76,8 +76,15 @@ Diagram labels (screen and PDF):
 - Label + dimensions run along the panel's longest edge; on panels taller than wide the text is rotated 90° (reads bottom-to-top).
 - Dimensions always shown in full (font shrinks to fit); labels shortened with "…" so text never spills onto neighbouring panels. Panels too small to read get no text.
 
+### MVP-6 — measuring tool in the diagrams (current)
+- On-screen cut diagrams only (not the PDF).
+- Snap targets: every panel corner, the sheet's outer corners and the edge-trim corners. Hovering within ~10 px of one shows a red snap ring; the cursor is a crosshair.
+- Clicking a corner starts a measurement: a dotted line from that corner follows the mouse; its end snaps to nearby corners (exact corner-to-corner values), otherwise follows the mouse freely.
+- Label next to the cursor: straight-line distance plus horizontal/vertical components, e.g. `947.26 (Δx 560, Δy 764)`; flips to stay inside the sheet.
+- Only one active measurement: the next click anywhere (or Escape) clears it. A click away from a corner does not start one.
+
 ### Backlog (candidates for next iterations, not committed)
-- Grain direction per panel (lock rotation).
+- Grain direction per panel (lock rotation) — deprioritized by the user (2026-10-14).
 - Cut sequence instructions per sheet.
 - Better optimizer (more heuristics / search, prefer large reusable offcuts).
 - Export/import a project as a JSON file.
@@ -97,3 +104,4 @@ Diagram labels (screen and PDF):
 | 2026-10-12 | MVP-4: formulas in numeric fields, replaced by their result on commit (formula not stored). |
 | 2026-10-14 | MVP-5: PDF export generated client-side by a hand-written minimal PDF writer (vector, zero deps) rather than a library or the print dialog. |
 | 2026-10-14 | Diagram text follows the panel's longest edge and is fitted to the panel (fixes labels overlapping neighbours). |
+| 2026-10-14 | MVP-6: measuring tool with corner snapping on the diagrams; label shows distance + Δx/Δy. Grain direction deprioritized. |
