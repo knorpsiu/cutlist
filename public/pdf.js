@@ -71,6 +71,23 @@
       this.ops.push(`q ${rgb(color)} RG ${n(lineWidth)} w ${n(x1)} ${n(PAGE_H - y1)} m ${n(x2)} ${n(PAGE_H - y2)} l S Q`);
     }
 
+    // Circle from four Bézier arcs (k = 4/3·(√2−1) makes each a close quarter circle).
+    circle(cx, cy, r, { fill, stroke, lineWidth = 0.5 } = {}) {
+      const k = 0.5523 * r;
+      const X = (v) => n(v);
+      const Y = (v) => n(PAGE_H - v);
+      const ops = ['q'];
+      if (fill) ops.push(`${rgb(fill)} rg`);
+      if (stroke) ops.push(`${rgb(stroke)} RG ${n(lineWidth)} w`);
+      ops.push(`${X(cx + r)} ${Y(cy)} m`,
+        `${X(cx + r)} ${Y(cy + k)} ${X(cx + k)} ${Y(cy + r)} ${X(cx)} ${Y(cy + r)} c`,
+        `${X(cx - k)} ${Y(cy + r)} ${X(cx - r)} ${Y(cy + k)} ${X(cx - r)} ${Y(cy)} c`,
+        `${X(cx - r)} ${Y(cy - k)} ${X(cx - k)} ${Y(cy - r)} ${X(cx)} ${Y(cy - r)} c`,
+        `${X(cx + k)} ${Y(cy - r)} ${X(cx + r)} ${Y(cy - k)} ${X(cx + r)} ${Y(cy)} c`,
+        fill && stroke ? 'b' : fill ? 'f' : 's', 'Q');
+      this.ops.push(ops.join(' '));
+    }
+
     // (x, y) is the anchor on the text baseline. With vertical: true the text is rotated 90°
     // counter-clockwise (reads bottom-to-top) and alignment applies along that direction.
     text(str, x, y, { size = 10, bold = false, color = '#000000', align = 'left', vertical = false } = {}) {
@@ -123,10 +140,11 @@
   const BOTTOM = PAGE_H - MARGIN - 18; // keep clear of the footer
   const GREY = '#666666';
   const RED = '#c53030';
+  const CUT = '#d1242f';
   const fmt = (v) => String(n(v));
 
   // input: { name, date, kerf, algorithmName, materials, panels, result, colorOf(hex) → {fill, text, stroke}, materialName(m) }
-  function buildReport({ name, date, kerf, algorithmName, materials, panels, result, colorOf, materialName }) {
+  function buildReport({ name, date, kerf, algorithmName, materials, panels, result, colorOf, materialName, showCuts = true }) {
     const pdf = new PdfWriter();
     let y;
     const newPage = () => {
@@ -226,7 +244,26 @@
         pdf.text(fit(p.label, along - 4, size), ...line(-size * 0.15), { ...opts, size });
         pdf.text(fit(dims, along - 4, size * 0.85), ...line(size * 1.0), { ...opts, size: size * 0.85 });
       }
+      if (showCuts) drawCuts(sheet.cuts || [], x0, y0, scale);
       y += h;
+    }
+
+    // Cut lines in saw order, numbered near the start of each line (as on screen).
+    function drawCuts(cuts, x0, y0, scale) {
+      const at = (x, y) => [x0 + x * scale, y0 + y * scale];
+      for (const c of cuts) {
+        const [x1, y1] = c.dir === 'h' ? at(c.from, c.at) : at(c.at, c.from);
+        const [x2, y2] = c.dir === 'h' ? at(c.to, c.at) : at(c.at, c.to);
+        pdf.line(x1, y1, x2, y2, { color: CUT, lineWidth: 0.7 });
+      }
+      for (const c of cuts) {
+        const r = Math.min(5, (c.to - c.from) * scale / 2);
+        const along = c.from + Math.min((c.to - c.from) / 2, r * 2.5 / scale);
+        const [bx, by] = c.dir === 'h' ? at(along, c.at) : at(c.at, along);
+        const size = r * (c.n > 9 ? 1 : 1.2);
+        pdf.circle(bx, by, r, { fill: '#ffffff', stroke: CUT, lineWidth: 0.5 });
+        pdf.text(String(c.n), bx, by + size * 0.35, { size, bold: true, color: CUT, align: 'center' });
+      }
     }
 
     newPage();

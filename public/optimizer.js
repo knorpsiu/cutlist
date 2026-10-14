@@ -212,6 +212,59 @@
     return Object.values(ORIENTS).map((orient) => () => runStrips(input, orient));
   }
 
+  // ---- Cut sequence ------------------------------------------------------------------------
+  // Recovered from the finished layout, so it works for every algorithm: inside the trimmed
+  // sheet, take every edge-to-edge cut in one direction (a stage), then recurse into each piece
+  // with the other direction. Cuts are numbered in saw order: a stage's cuts, then each piece's.
+  // dir 'h' = rip (line along the sheet length, y = at), 'v' = crosscut (x = at).
+
+  const EPS = 1e-6;
+
+  // Edge-to-edge cuts across region r in one direction; kerf intervals [lo, hi] along the axis.
+  function stageCuts(r, parts, dir, kerf) {
+    const [pos, size, rLo, rHi] = dir === 'h' ? ['y', 'h', r.y, r.y + r.h] : ['x', 'w', r.x, r.x + r.w];
+    const edges = [];
+    for (const p of parts) {
+      const start = p[pos], end = p[pos] + p[size];
+      // Kerf just past the panel's far edge, or just before its near edge (clipped to the region).
+      if (end < rHi - EPS) edges.push({ lo: end, hi: Math.min(rHi, end + kerf) });
+      if (start > rLo + EPS) edges.push({ lo: Math.max(rLo, start - kerf), hi: start });
+    }
+    edges.sort((a, b) => a.lo - b.lo || a.hi - b.hi);
+    const cuts = [];
+    for (const c of edges) {
+      if (parts.some((q) => q[pos] < c.hi - EPS && q[pos] + q[size] > c.lo + EPS)) continue; // through a panel
+      const last = cuts[cuts.length - 1];
+      if (last && c.lo <= last.hi + EPS) continue; // same cut seen from the other panel
+      cuts.push(c);
+    }
+    return cuts;
+  }
+
+  function cutSequence(placements, sheet, trim, kerf, firstDir) {
+    const cuts = [];
+    function split(r, parts, dir) {
+      let stage = stageCuts(r, parts, dir, kerf);
+      if (!stage.length) {
+        dir = dir === 'h' ? 'v' : 'h';
+        stage = stageCuts(r, parts, dir, kerf);
+      }
+      if (!stage.length) return; // a single panel filling the region
+      const [pos, size] = dir === 'h' ? ['y', 'h'] : ['x', 'w'];
+      const [from, to] = dir === 'h' ? [r.x, r.x + r.w] : [r.y, r.y + r.h];
+      for (const c of stage) cuts.push({ dir, at: (c.lo + c.hi) / 2, from, to });
+      // Pieces between the cuts; offcuts (no panels) need no further cuts.
+      const bounds = [r[pos], ...stage.flatMap((c) => [c.lo, c.hi]), r[pos] + r[size]];
+      for (let i = 0; i < bounds.length; i += 2) {
+        const piece = { ...r, [pos]: bounds[i], [size]: bounds[i + 1] - bounds[i] };
+        const inside = parts.filter((p) => p[pos] >= piece[pos] - EPS && p[pos] + p[size] <= piece[pos] + piece[size] + EPS);
+        if (inside.length) split(piece, inside, dir === 'h' ? 'v' : 'h');
+      }
+    }
+    split({ x: trim, y: trim, w: sheet.length - 2 * trim, h: sheet.width - 2 * trim }, placements, firstDir);
+    return cuts.map((c, i) => ({ n: i + 1, ...c }));
+  }
+
   // Lower is better: unplaced parts, then sheets used, then fragmented leftover
   // (a larger biggest offcut means waste is concentrated and reusable).
   function score(result) {
@@ -236,6 +289,10 @@
         bestScore = s;
       }
     }
+
+    // Strip layouts start with full-length rips, except crosscut first (full-width cuts).
+    const firstDir = input.algorithm === 'crosscut' ? 'v' : 'h';
+    for (const s of best.sheets) s.cuts = cutSequence(s.placements, input.sheet, input.trim, input.kerf, firstDir);
 
     const usedArea = best.sheets.reduce((sum, s) => sum + s.placements.reduce((a, p) => a + p.w * p.h, 0), 0);
     const sheetArea = input.sheet.length * input.sheet.width;

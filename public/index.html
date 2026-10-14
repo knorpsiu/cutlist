@@ -25,6 +25,7 @@
     td { padding: 2px 6px; }
     button { font: inherit; padding: 6px 14px; cursor: pointer; }
     .actions { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: end; }
+    .check { flex-direction: row; align-items: center; gap: 4px; align-self: center; }
     #optimize { background: #2b6cb0; color: #fff; border: 0; border-radius: 4px; font-weight: 600; }
     .remove { padding: 2px 8px; }
     .handle { cursor: grab; touch-action: none; user-select: none; color: #999; font-size: 18px; padding: 0 2px 0 0; }
@@ -51,7 +52,8 @@
     .sheet h3 { margin: 0 0 6px; font-size: 15px; }
     svg { width: 100%; height: auto; display: block; }
     svg[data-corners] { cursor: crosshair; touch-action: none; }
-    .measure { pointer-events: none; }
+    .measure, .cuts { pointer-events: none; }
+    #results.hide-cuts .cuts { display: none; }
     .project { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: end; }
     .project input { width: 220px; }
     #projectStatus { font-size: 13px; color: #666; align-self: center; }
@@ -101,6 +103,7 @@
     <label>Layout <select id="algorithm"></select></label>
     <button id="optimize" type="button">Optimize</button>
     <button id="exportPdf" type="button">Export PDF</button>
+    <label class="check"><input type="checkbox" id="showCuts" checked> Show cuts</label>
   </div>
 
   <section id="results"></section>
@@ -539,6 +542,18 @@
     document.getElementById('optimize').onclick = runOptimize;
     document.getElementById('exportPdf').onclick = exportPdf;
 
+    // Cut lines are drawn always and hidden with CSS, so toggling needs no re-render.
+    // A viewing preference, not project data: remembered per browser.
+    const SHOW_CUTS_KEY = 'cutlist.showCuts';
+    const showCuts = document.getElementById('showCuts');
+    try { showCuts.checked = localStorage.getItem(SHOW_CUTS_KEY) !== '0'; } catch {}
+    const applyShowCuts = () => results.classList.toggle('hide-cuts', !showCuts.checked);
+    showCuts.addEventListener('change', () => {
+      applyShowCuts();
+      try { localStorage.setItem(SHOW_CUTS_KEY, showCuts.checked ? '1' : '0'); } catch {}
+    });
+    applyShowCuts();
+
     // Start with the last opened project, or the example if there is none.
     (async () => {
       let lastId = null;
@@ -596,6 +611,7 @@
         name: name || 'Untitled project',
         date: new Date().toLocaleString(),
         algorithmName: Cutlist.ALGORITHMS[run.algorithm],
+        showCuts: showCuts.checked,
         colorOf,
         materialName,
       });
@@ -673,7 +689,24 @@
           <text y="${-f * 0.2}" font-size="${f}">${esc(label)}</text>
           <text y="${f * 1.1}" font-size="${f * 0.85}">${esc(dims)}</text></g>`;
       }
-      return out + '</svg>';
+      return out + cutsSvg(s.cuts, font) + '</svg>';
+    }
+
+    // Cut lines in saw order, drawn over the panels. Each number sits near the start of its line,
+    // clear of the panel text, which is centred.
+    function cutsSvg(cuts = [], font) {
+      let lines = '', badges = '';
+      for (const c of cuts) {
+        const [x1, y1, x2, y2] = c.dir === 'h' ? [c.from, c.at, c.to, c.at] : [c.at, c.from, c.at, c.to];
+        lines += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" vector-effect="non-scaling-stroke"/>`;
+        const r = Math.min(font * 0.6, (c.to - c.from) / 2);
+        const along = c.from + Math.min((c.to - c.from) / 2, r * 2.5);
+        const [bx, by] = c.dir === 'h' ? [along, c.at] : [c.at, along];
+        badges += `<g transform="translate(${bx} ${by})"><circle r="${r}"/>
+          <text y="${r * 0.36}" fill="#d1242f" stroke="none" font-size="${r * (c.n > 9 ? 0.95 : 1.1)}">${c.n}</text></g>`;
+      }
+      return `<g class="cuts"><g stroke="#d1242f" stroke-width="2">${lines}</g>
+        <g fill="#fff" stroke="#d1242f" stroke-width="1.5" text-anchor="middle" font-weight="600">${badges}</g></g>`;
     }
 
     // ---- Measuring tool --------------------------------------------------------------------

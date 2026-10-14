@@ -25,7 +25,7 @@ Zero dependencies: no npm packages, no build step, no framework. Plain HTML/JS i
 | `server.js` | `node:http` server: static files from `public/` + JSON API `GET/POST /api/projects`, `GET/PUT/DELETE /api/projects/:id` |
 | `db.js` | SQLite storage (`node:sqlite`). One row per project; contents (kerf, materials, panels) stored as a JSON document. Names unique, case-insensitive |
 | `public/index.html` | The whole UI: inline CSS and an inline script (forms, colour picker, drag-and-drop reordering, projects bar, results SVG rendering) |
-| `public/optimizer.js` | Layout algorithms, per material, each trying several variants and keeping the best: `rip` (3-stage strips: rip → crosscut → rip; default), `crosscut` (same on the transposed sheet), `guillotine` (free packing). `optimize({kerf, algorithm, materials, panels})`; names in `Cutlist.ALGORITHMS` |
+| `public/optimizer.js` | Layout algorithms, per material, each trying several variants and keeping the best: `rip` (3-stage strips: rip → crosscut → rip; default), `crosscut` (same on the transposed sheet), `guillotine` (free packing). `optimize({kerf, algorithm, materials, panels})`; names in `Cutlist.ALGORITHMS`. Each sheet also gets `cuts` (`{n, dir: 'h'=rip/'v'=crosscut, at, from, to}`, in saw order), recovered from the placements by `cutSequence` |
 | `public/formula.js` | Hand-written arithmetic parser for numeric fields (`=2400-60-60`). Never use `eval` |
 | `public/pdf.js` | Minimal PDF writer (vector shapes, Helvetica/WinAnsi text) + `buildReport()` for the PDF export |
 | `public/favicon.svg` | App icon, also shown next to the page title |
@@ -58,5 +58,6 @@ There is no test suite yet. Verify changes like this:
 - **Numeric inputs:** these are `type="text"` with class `num`, so formulas can be typed. Read them through `num()`/`int()`, never `parseFloat`.
 - **Colours:** materials store the palette's hex `fill` value. Unknown colours, e.g. from the old wood-tone palette, are replaced with a default on load.
 - **Measuring tool:** each sheet `<svg>` carries `data-corners` (snap points) and `data-length`. The overlay is a `<g class="measure">` added lazily, with `pointer-events: none`. Overlay sizes are in screen pixels converted through `getScreenCTM()`. The label box is sized with `getComputedTextLength()`, because canvas measurement doesn't match the SVG text exactly.
+- **Cut lines:** drawn inside `<g class="cuts">` with `pointer-events: none` (so the measuring tool still works) and hidden with the `hide-cuts` class on `#results`, not by re-rendering. A cut's `at` is the centre of its kerf, which is clipped to the piece, so piece edges can't be recovered exactly from `at` (tests allow one kerf of tolerance).
 - **PDF text:** WinAnsi only. Characters outside Latin-1 (plus €, –, —, …, quotes, •) print as "?".
 - Background dev servers started from a Claude session stop after 2 hours. The user usually runs `npm run dev` in their own terminal.
