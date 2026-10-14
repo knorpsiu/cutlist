@@ -1,0 +1,61 @@
+# CLAUDE.md
+
+Guidance for resuming work on **cutlist**, a web app that helps furniture makers optimize cuts of sheet goods.
+
+**Start here:** read `REQUIREMENTS.md`. It holds the goal, what each MVP iteration delivered, the backlog and the decision log. Keep it updated with every feature or decision.
+
+## Run
+
+```sh
+npm run dev     # node --watch: restarts on server.js/db.js changes; http://localhost:3000
+npm run debug   # same, plus Node inspector
+npm start       # plain run
+```
+
+- `PORT` and `DB_PATH` env vars override the defaults (3000, `data/cutlist.db`).
+- Files in `public/` are served with `no-store`, so a browser reload picks up front-end changes without a restart.
+- Requires Node ≥ 22.13 (built-in `node:sqlite`; its ExperimentalWarning is silenced in the npm scripts).
+
+## Architecture
+
+Zero dependencies: no npm packages, no build step, no framework. Plain HTML/JS in the browser, Node built-ins on the server.
+
+| File | Role |
+|---|---|
+| `server.js` | `node:http` server: static files from `public/` + JSON API `GET/POST /api/projects`, `GET/PUT/DELETE /api/projects/:id` |
+| `db.js` | SQLite storage (`node:sqlite`). One row per project; contents (kerf, materials, panels) stored as a JSON document. Names unique, case-insensitive |
+| `public/index.html` | The whole UI: inline CSS and an inline script (forms, colour picker, drag-and-drop reordering, projects bar, results SVG rendering) |
+| `public/optimizer.js` | Guillotine bin-packing: per material, tries several sort orders × split rules and keeps the best result. `optimize({kerf, materials, panels})` |
+| `public/formula.js` | Hand-written arithmetic parser for numeric fields (`=2400-60-60`). Never use `eval` |
+| `public/pdf.js` | Minimal PDF writer (vector shapes, Helvetica/WinAnsi text) + `buildReport()` for the PDF export |
+| `public/favicon.svg` | App icon, also shown next to the page title |
+
+- Browser modules are plain scripts that attach a global (`Cutlist`, `Formula`, `CutlistPdf`) **and** `module.exports`, so Node can `require()` them for testing.
+- Data model: material `{id, name, thickness, length, width, qty, trim, color}`; panel `{label, length, width, qty, material}`, where `material` is a material id. Coordinates in layouts: x along the sheet length, y along its width.
+- Units are unitless; the user picks mm or inches and stays consistent.
+
+## Conventions
+
+- **MVP approach:** small, usable increments. Don't front-load features; put ideas in the `REQUIREMENTS.md` backlog.
+- **Stay dependency-free** unless the user agrees otherwise.
+- **After each tested feature:** update `REQUIREMENTS.md` (iteration notes + decision log), then commit locally. No remote exists, so don't push.
+- Match the existing style: 2-space indent, single quotes, short comments explaining *why*.
+
+## Testing
+
+There is no test suite yet. Verify changes like this:
+
+- **Pure modules:** `node -e` scripts that `require('./public/optimizer.js')` etc. and check results, e.g. no overlapping panels, kerf gaps respected, everything inside the edge trim.
+- **API:** start a server on a spare port with a throwaway `DB_PATH`, then exercise it with `curl`.
+- **UI:** drive headless Chrome via the DevTools protocol from a Node script, using Node's global `WebSocket` and `Input.dispatchMouseEvent` / `Input.insertText` for real clicks and typing. Capture screenshots with `Page.captureScreenshot` and read them back to check.
+- **PDF:** render pages to PNG with a small Swift/PDFKit script and inspect them.
+- Always use a throwaway `DB_PATH` for tests so the user's `data/cutlist.db` is never touched.
+
+## Gotchas
+
+- **Element ids vs function names:** in the page, ids such as `saveProject`, `newProject` and `deleteProject` are shadowed by functions of the same name. In test scripts, use `document.getElementById(...)` rather than the global.
+- **Colour picker:** a custom popover (native `<select>` can't show colours on macOS) backed by a hidden `<select class="color">` that holds the value. The toggle-close logic uses `pointerdown` state, because light dismiss closes the popover before the button's click fires.
+- **Numeric inputs:** these are `type="text"` with class `num`, so formulas can be typed. Read them through `num()`/`int()`, never `parseFloat`.
+- **Colours:** materials store the palette's hex `fill` value. Unknown colours, e.g. from the old wood-tone palette, are replaced with a default on load.
+- **PDF text:** WinAnsi only. Characters outside Latin-1 (plus €, –, —, …, quotes, •) print as "?".
+- Background dev servers started from a Claude session stop after 2 hours. The user usually runs `npm run dev` in their own terminal.
