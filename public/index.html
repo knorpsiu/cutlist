@@ -7,7 +7,8 @@
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <style>
     body { font-family: system-ui, sans-serif; margin: 0 auto; max-width: 1100px; padding: 16px; color: #222; }
-    h1 { margin: 0 0 4px; }
+    h1 { margin: 0 0 4px; display: flex; align-items: center; gap: 10px; }
+    h1 .logo { width: 36px; height: 36px; }
     .sub { color: #666; margin: 0 0 20px; }
     fieldset { border: 1px solid #ccc; border-radius: 6px; margin: 0 0 16px; padding: 12px 16px; overflow-x: auto; }
     legend { font-weight: 600; padding: 0 6px; }
@@ -56,7 +57,7 @@
   </style>
 </head>
 <body>
-  <h1>cutlist</h1>
+  <h1><img class="logo" src="favicon.svg" alt="">cutlist</h1>
   <p class="sub">Sheet goods cut optimizer. Use any unit (mm or inches) — just be consistent.</p>
 
   <fieldset>
@@ -94,11 +95,13 @@
   </fieldset>
 
   <button id="optimize" type="button">Optimize</button>
+  <button id="exportPdf" type="button">Export PDF</button>
 
   <section id="results"></section>
 
   <script src="formula.js"></script>
   <script src="optimizer.js"></script>
+  <script src="pdf.js"></script>
   <script>
     const materialsBody = document.getElementById('materials');
     const panelsBody = document.getElementById('panels');
@@ -521,6 +524,7 @@
     document.getElementById('addMaterial').onclick = () => { addMaterialRow(); markDirty(); };
     document.getElementById('addPanel').onclick = () => { addPanelRow(); markDirty(); };
     document.getElementById('optimize').onclick = runOptimize;
+    document.getElementById('exportPdf').onclick = exportPdf;
 
     // Start with the last opened project, or the example if there is none.
     (async () => {
@@ -539,27 +543,52 @@
       }
     })();
 
-    function runOptimize() {
+    // Validate the form and run the optimizer. Shows a warning and returns null if the input isn't usable.
+    function optimizeForm() {
       const invalidField = document.querySelector('input.num.invalid');
       if (invalidField) {
-        results.innerHTML = '<p class="warn">Fix the invalid formula (highlighted in red) before optimizing.</p>';
+        results.innerHTML = '<p class="warn">Fix the invalid formula (highlighted in red) first.</p>';
         invalidField.focus();
-        return;
+        return null;
       }
       const materials = readMaterials();
       const panels = readPanels();
       if (!panels.length) {
         results.innerHTML = '<p class="warn">Add at least one panel.</p>';
-        return;
+        return null;
       }
       const invalid = materials.filter((m) => panels.some((p) => p.material === m.id)
         && (m.length <= 2 * m.trim || m.width <= 2 * m.trim));
       if (invalid.length) {
         results.innerHTML = `<p class="warn">Sheet size is missing or too small for its edge trim: ${invalid.map((m) => esc(materialName(m))).join(', ')}.</p>`;
-        return;
+        return null;
       }
       const kerf = num(document.getElementById('kerf').value);
-      render(Cutlist.optimize({ kerf, materials, panels }));
+      return { kerf, materials, panels, result: Cutlist.optimize({ kerf, materials, panels }) };
+    }
+
+    function runOptimize() {
+      const run = optimizeForm();
+      if (run) render(run.result);
+    }
+
+    function exportPdf() {
+      const run = optimizeForm();
+      if (!run) return;
+      render(run.result);
+      const name = projectName.value.trim();
+      const bytes = CutlistPdf.buildReport({
+        ...run,
+        name: name || 'Untitled project',
+        date: new Date().toLocaleString(),
+        colorOf,
+        materialName,
+      });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+      link.download = `${(name || 'cutlist').replace(/[\\/:*?"<>|]+/g, '-')}.pdf`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 10000);
     }
 
     function render({ groups, unassigned }) {
