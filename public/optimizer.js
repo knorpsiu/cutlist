@@ -1,5 +1,11 @@
-// Guillotine sheet-cutting optimizer.
+// Sheet-cutting optimizer. All layouts are guillotine (every cut runs edge to edge).
 // Coordinates: x runs along the sheet length, y along the sheet width.
+//
+// Algorithms:
+// - 'rip':        rip the sheet into full-length strips, crosscut strips into columns, then rip
+//                 columns into stacked panels (3 stages) — straight, repeatable table/track saw cuts.
+// - 'crosscut':   the same with the sheet turned 90°: full-width sections first, then rip them.
+// - 'guillotine': free guillotine bin-packing (mixes cut directions); often fewest sheets.
 (function (global) {
   const SORTS = {
     area: (a, b) => b.w * b.h - a.w * a.h,
@@ -87,6 +93,125 @@
     return { sheets, unplaced };
   }
 
+  // ---- Strip layouts (rip first) ---------------------------------------------------------
+  // The sheet's usable area is cut into strips running its full length. Each panel placed in a
+  // strip starts a column (crosscut); narrower panels can stack below it in that column (rip).
+
+  // Orientation policies: which panel side runs across the strip (sets strip thickness).
+  const ORIENTS = {
+    shortAcross: (p) => (p.w >= p.h ? [p.w, p.h, false] : [p.h, p.w, true]),
+    longAcross: (p) => (p.w >= p.h ? [p.h, p.w, true] : [p.w, p.h, false]),
+  };
+
+  function runStrips(input, orient) {
+    const { sheet, kerf, trim } = input;
+    const L = sheet.length - 2 * trim;
+    const W = sheet.width - 2 * trim;
+    const parts = expandPanels(input.panels)
+      .map((part) => {
+        const [w, h, rotated] = orient(part);
+        return { ...part, ow: w, oh: h, orotated: rotated };
+      })
+      .sort((a, b) => b.oh - a.oh || b.ow - a.ow);
+    const sheets = []; // { placements, strips: [{ y, h, x, columns: [{ x, w, nextY, bottom }] }], nextY }
+    const unplaced = [];
+    const orientations = (part) => {
+      const list = [[part.ow, part.oh, part.orotated]];
+      if (part.w !== part.h) list.push([part.oh, part.ow, !part.orotated]);
+      return list;
+    };
+
+    function tryPlace(part) {
+      let best = null;
+      const consider = (score, apply) => {
+        if (!best || score < best.score) best = { score, apply };
+      };
+      for (const s of sheets) {
+        for (const strip of s.strips) {
+          for (const [w, h, rotated] of orientations(part)) {
+            // Stack below an existing column (one more rip, no new crosscut).
+            for (const col of strip.columns) {
+              if (w <= col.w && col.nextY + h <= col.bottom) {
+                consider((col.w - w) * h, () => {
+                  s.placements.push({ label: part.label, x: col.x, y: col.nextY, w, h, rotated });
+                  col.nextY += h + kerf;
+                });
+              }
+            }
+            // New column at the end of the strip.
+            if (strip.x + w <= trim + L && h <= strip.h) {
+              consider((strip.h - h) * w + 1e-6, () => {
+                s.placements.push({ label: part.label, x: strip.x, y: strip.y, w, h, rotated });
+                strip.columns.push({ x: strip.x, w, nextY: strip.y + h + kerf, bottom: strip.y + strip.h });
+                strip.x += w + kerf;
+              });
+            }
+          }
+        }
+      }
+      if (best) {
+        best.apply();
+        return true;
+      }
+      // New strip, on the first sheet with room for it (preferred orientation first).
+      for (const s of sheets) {
+        for (const [w, h, rotated] of orientations(part)) {
+          if (w <= L && s.nextY + h <= trim + W) {
+            const strip = { y: s.nextY, h, x: trim, columns: [] };
+            s.strips.push(strip);
+            s.nextY += h + kerf;
+            s.placements.push({ label: part.label, x: trim, y: strip.y, w, h, rotated });
+            strip.columns.push({ x: trim, w, nextY: strip.y + h + kerf, bottom: strip.y + h });
+            strip.x += w + kerf;
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    for (const part of parts) {
+      if (tryPlace(part)) continue;
+      if (sheets.length < sheet.qty) {
+        sheets.push({ placements: [], strips: [], nextY: trim });
+        if (tryPlace(part)) continue;
+        sheets.pop(); // part is larger than an empty sheet
+      }
+      unplaced.push(part);
+    }
+
+    // Offcuts (for scoring): the end of each strip and the area below the last strip.
+    for (const s of sheets) {
+      s.free = s.strips.map((st) => ({ x: st.x, y: st.y, w: trim + L - st.x, h: st.h })).filter((f) => f.w > 0);
+      if (s.nextY < trim + W) s.free.push({ x: trim, y: s.nextY, w: L, h: trim + W - s.nextY });
+      delete s.strips;
+      delete s.nextY;
+    }
+    return { sheets, unplaced };
+  }
+
+  // Crosscut first = rip first on the sheet turned 90°, then turned back.
+  function transpose(result) {
+    const flip = (r) => ({ ...r, x: r.y, y: r.x, w: r.h, h: r.w });
+    for (const s of result.sheets) {
+      s.placements = s.placements.map((p) => ({ ...flip(p), rotated: !p.rotated }));
+      s.free = s.free.map(flip);
+    }
+    return result;
+  }
+
+  function candidates(input) {
+    const algorithm = input.algorithm || 'rip';
+    if (algorithm === 'guillotine') {
+      return Object.values(SORTS).flatMap((sortFn) => Object.values(SPLITS).map((splitFn) => () => run(input, sortFn, splitFn)));
+    }
+    if (algorithm === 'crosscut') {
+      const turned = { ...input, sheet: { ...input.sheet, length: input.sheet.width, width: input.sheet.length } };
+      return Object.values(ORIENTS).map((orient) => () => transpose(runStrips(turned, orient)));
+    }
+    return Object.values(ORIENTS).map((orient) => () => runStrips(input, orient));
+  }
+
   // Lower is better: unplaced parts, then sheets used, then fragmented leftover
   // (a larger biggest offcut means waste is concentrated and reusable).
   function score(result) {
@@ -99,18 +224,16 @@
     return false;
   }
 
-  // Lay out panels on a single sheet type: { sheet, kerf, trim, panels }.
+  // Lay out panels on a single sheet type: { sheet, kerf, trim, panels, algorithm }.
   function optimizeSheet(input) {
     let best = null;
     let bestScore = null;
-    for (const sortFn of Object.values(SORTS)) {
-      for (const splitFn of Object.values(SPLITS)) {
-        const result = run(input, sortFn, splitFn);
-        const s = score(result);
-        if (!best || better(s, bestScore)) {
-          best = result;
-          bestScore = s;
-        }
+    for (const attempt of candidates(input)) {
+      const result = attempt();
+      const s = score(result);
+      if (!best || better(s, bestScore)) {
+        best = result;
+        bestScore = s;
       }
     }
 
@@ -127,7 +250,7 @@
   }
 
   // Lay out panels across several sheet goods.
-  // input: { kerf, materials: [{ id, name, thickness, length, width, qty, trim }],
+  // input: { kerf, algorithm, materials: [{ id, name, thickness, length, width, qty, trim }],
   //          panels: [{ label, length, width, qty, material }] } — panel.material is a material id.
   // Returns one group per material that has panels, plus panels whose material is unknown.
   function optimize(input) {
@@ -140,6 +263,7 @@
         kerf: input.kerf,
         trim: material.trim,
         panels,
+        algorithm: input.algorithm,
       });
       groups.push({ material, ...result });
     }
@@ -148,6 +272,12 @@
     return { groups, unassigned };
   }
 
-  global.Cutlist = { optimize, optimizeSheet };
-  if (typeof module !== 'undefined') module.exports = { optimize, optimizeSheet };
+  const ALGORITHMS = {
+    rip: 'Rip first (full-length strips)',
+    crosscut: 'Crosscut first (full-width strips)',
+    guillotine: 'Best fit (mixed cuts)',
+  };
+
+  global.Cutlist = { optimize, optimizeSheet, ALGORITHMS };
+  if (typeof module !== 'undefined') module.exports = { optimize, optimizeSheet, ALGORITHMS };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -25,7 +25,7 @@ Zero dependencies: no npm packages, no build step, no framework. Plain HTML/JS i
 | `server.js` | `node:http` server: static files from `public/` + JSON API `GET/POST /api/projects`, `GET/PUT/DELETE /api/projects/:id` |
 | `db.js` | SQLite storage (`node:sqlite`). One row per project; contents (kerf, materials, panels) stored as a JSON document. Names unique, case-insensitive |
 | `public/index.html` | The whole UI: inline CSS and an inline script (forms, colour picker, drag-and-drop reordering, projects bar, results SVG rendering) |
-| `public/optimizer.js` | Guillotine bin-packing: per material, tries several sort orders × split rules and keeps the best result. `optimize({kerf, materials, panels})` |
+| `public/optimizer.js` | Layout algorithms, per material, each trying several variants and keeping the best: `rip` (3-stage strips: rip → crosscut → rip; default), `crosscut` (same on the transposed sheet), `guillotine` (free packing). `optimize({kerf, algorithm, materials, panels})`; names in `Cutlist.ALGORITHMS` |
 | `public/formula.js` | Hand-written arithmetic parser for numeric fields (`=2400-60-60`). Never use `eval` |
 | `public/pdf.js` | Minimal PDF writer (vector shapes, Helvetica/WinAnsi text) + `buildReport()` for the PDF export |
 | `public/favicon.svg` | App icon, also shown next to the page title |

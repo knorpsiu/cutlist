@@ -125,8 +125,8 @@
   const RED = '#c53030';
   const fmt = (v) => String(n(v));
 
-  // input: { name, date, kerf, materials, panels, result, colorOf(hex) → {fill, text, stroke}, materialName(m) }
-  function buildReport({ name, date, kerf, materials, panels, result, colorOf, materialName }) {
+  // input: { name, date, kerf, algorithmName, materials, panels, result, colorOf(hex) → {fill, text, stroke}, materialName(m) }
+  function buildReport({ name, date, kerf, algorithmName, materials, panels, result, colorOf, materialName }) {
     const pdf = new PdfWriter();
     let y;
     const newPage = () => {
@@ -237,7 +237,8 @@
     pdf.rect(MARGIN + 2, y + 16, 15, 6, { fill: '#fb8c00' });
     pdf.rect(MARGIN + 19, y + 2, 9, 20, { fill: '#43a047' });
     pdf.text(fit(name, CONTENT_W - 40, 18), MARGIN + 40, y + 13, { size: 18, bold: true });
-    pdf.text(`cutlist · exported ${date} · blade kerf ${fmt(kerf)}`, MARGIN + 40, y + 25, { size: 9, color: GREY });
+    pdf.text(fit(`cutlist · exported ${date} · blade kerf ${fmt(kerf)}${algorithmName ? ` · layout: ${algorithmName}` : ''}`, CONTENT_W - 40, 9),
+      MARGIN + 40, y + 25, { size: 9, color: GREY });
     y += 34;
 
     heading('Sheet goods');

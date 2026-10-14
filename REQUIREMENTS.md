@@ -76,7 +76,7 @@ Diagram labels (screen and PDF):
 - Label + dimensions run along the panel's longest edge; on panels taller than wide the text is rotated 90° (reads bottom-to-top).
 - Dimensions always shown in full (font shrinks to fit); labels shortened with "…" so text never spills onto neighbouring panels. Panels too small to read get no text.
 
-### MVP-6 — measuring tool in the diagrams (current)
+### MVP-6 — measuring tool in the diagrams ✅
 - On-screen cut diagrams only (not the PDF).
 - Snap targets: every panel corner, the sheet's outer corners and the edge-trim corners. Hovering within ~10 px of one shows a red snap ring; the cursor is a crosshair.
 - Clicking a corner starts a measurement: a dotted line from that corner follows the mouse; its end snaps to nearby corners (exact corner-to-corner values), otherwise follows the mouse freely.
@@ -84,10 +84,17 @@ Diagram labels (screen and PDF):
 - Only one active measurement: the next click anywhere (or Escape) clears it. A click away from a corner does not start one.
 - Holding Shift constrains the line to horizontal or vertical (whichever direction the mouse is further along); releasing it returns to free measuring. Takes effect immediately on key press/release. With Shift, a nearby corner still snaps: the line ends level with that corner, and a faint red guide links the corner to the line's end.
 
+### MVP-7 — layout algorithms (current)
+- "Layout" dropdown next to Optimize, saved with the project; changing it re-runs Optimize when results are shown. The PDF header names the layout used.
+- **Rip first (full-length strips)** — default. Saw-friendly 3-stage layout: rip the sheet into strips running its full length, crosscut strips into columns, rip columns into stacked panels. Every cut is straight through, panels in a strip share a fence setting, and misalignment can't propagate across the sheet.
+- **Crosscut first (full-width strips)** — same, rotated 90°: full-width sections first (easier to handle when breaking down sheets with a track saw), then rip.
+- **Best fit (mixed cuts)** — the original free guillotine packing: may use fewer sheets, but mixes cut directions and needs more setups.
+- Projects saved before this feature open with Rip first.
+
 ### Backlog (candidates for next iterations, not committed)
 - Grain direction per panel (lock rotation) — deprioritized by the user (2026-10-14).
 - Cut sequence instructions per sheet.
-- Better optimizer (more heuristics / search, prefer large reusable offcuts).
+- Better optimizer (more heuristics / search, prefer large reusable offcuts); show strip/cut lines in the diagrams.
 - Export/import a project as a JSON file.
 - Imperial fractions input (e.g. 23 5/8).
 - CSV import of panels.
@@ -107,3 +114,4 @@ Diagram labels (screen and PDF):
 | 2026-10-14 | Diagram text follows the panel's longest edge and is fitted to the panel (fixes labels overlapping neighbours). |
 | 2026-10-14 | MVP-6: measuring tool with corner snapping on the diagrams; label shows distance + Δx/Δy. Grain direction deprioritized. |
 | 2026-10-14 | Shift while measuring = orthogonal (horizontal/vertical) line, still snapping to corners along the axis. |
+| 2026-10-14 | MVP-7: selectable layout algorithms; strip-based (3-stage) Rip first is the default because cuts must suit a track saw and table saw. |

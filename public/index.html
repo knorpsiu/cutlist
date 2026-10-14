@@ -24,6 +24,7 @@
     th { text-align: left; font-size: 13px; color: #555; font-weight: 500; padding: 2px 6px; }
     td { padding: 2px 6px; }
     button { font: inherit; padding: 6px 14px; cursor: pointer; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: end; }
     #optimize { background: #2b6cb0; color: #fff; border: 0; border-radius: 4px; font-weight: 600; }
     .remove { padding: 2px 8px; }
     .handle { cursor: grab; touch-action: none; user-select: none; color: #999; font-size: 18px; padding: 0 2px 0 0; }
@@ -96,8 +97,11 @@
     <p><button id="addPanel" type="button">+ Add panel</button></p>
   </fieldset>
 
-  <button id="optimize" type="button">Optimize</button>
-  <button id="exportPdf" type="button">Export PDF</button>
+  <div class="actions">
+    <label>Layout <select id="algorithm"></select></label>
+    <button id="optimize" type="button">Optimize</button>
+    <button id="exportPdf" type="button">Export PDF</button>
+  </div>
 
   <section id="results"></section>
 
@@ -106,6 +110,10 @@
   <script src="pdf.js"></script>
   <script>
     const materialsBody = document.getElementById('materials');
+    const algorithmSelect = document.getElementById('algorithm');
+    algorithmSelect.innerHTML = Object.entries(Cutlist.ALGORITHMS).map(([value, name]) => `<option value="${value}">${name}</option>`).join('');
+    // Switching layout re-runs the optimizer if results are showing.
+    algorithmSelect.addEventListener('change', () => results.querySelector('svg') && runOptimize());
     const panelsBody = document.getElementById('panels');
     const results = document.getElementById('results');
     const newId = () => `m${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
@@ -363,6 +371,7 @@
     // Example data so the page is useful on first open.
     const EXAMPLE = {
       kerf: 3,
+      algorithm: 'rip',
       materials: [
         { id: 'ply18', name: 'Plywood', thickness: 18, length: 2440, width: 1220, qty: 3, trim: 10 },
         { id: 'mdf18', name: 'MDF', thickness: 18, length: 2440, width: 1220, qty: 2, trim: 0 },
@@ -407,6 +416,7 @@
 
     const projectData = () => ({
       kerf: num(document.getElementById('kerf').value),
+      algorithm: algorithmSelect.value,
       materials: readMaterials(),
       panels: readPanelRows(),
     });
@@ -416,6 +426,7 @@
       loading = true;
       projectName.value = name;
       document.getElementById('kerf').value = data.kerf ?? 3;
+      algorithmSelect.value = Cutlist.ALGORITHMS[data.algorithm] ? data.algorithm : 'rip';
       materialsBody.innerHTML = '';
       panelsBody.innerHTML = '';
       (data.materials || []).forEach(addMaterialRow);
@@ -518,7 +529,7 @@
     window.addEventListener('beforeunload', (e) => { if (dirty) e.preventDefault(); });
 
     // Any edit to the project form marks it as changed.
-    for (const id of ['projectName', 'kerf', 'materials', 'panels']) {
+    for (const id of ['projectName', 'kerf', 'algorithm', 'materials', 'panels']) {
       document.getElementById(id).addEventListener('input', markDirty);
       document.getElementById(id).addEventListener('change', markDirty);
     }
@@ -566,7 +577,8 @@
         return null;
       }
       const kerf = num(document.getElementById('kerf').value);
-      return { kerf, materials, panels, result: Cutlist.optimize({ kerf, materials, panels }) };
+      const algorithm = algorithmSelect.value;
+      return { kerf, algorithm, materials, panels, result: Cutlist.optimize({ kerf, algorithm, materials, panels }) };
     }
 
     function runOptimize() {
@@ -583,6 +595,7 @@
         ...run,
         name: name || 'Untitled project',
         date: new Date().toLocaleString(),
+        algorithmName: Cutlist.ALGORITHMS[run.algorithm],
         colorOf,
         materialName,
       });
