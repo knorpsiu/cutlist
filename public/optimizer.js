@@ -241,8 +241,13 @@
     return cuts;
   }
 
+  // Each cut also records what the sawyer needs: `stock` (w × h of the piece being cut), `size`
+  // (fence setting: the width cut off, measured from the piece's top edge for rips or left edge
+  // for crosscuts, with the kerf on the far side), `piece` (what comes off) and, on a stage's
+  // last cut, `rest` (what remains). Pieces: { w, h, panels: [{ label, w, h, rotated }] }.
   function cutSequence(placements, sheet, trim, kerf, firstDir) {
     const cuts = [];
+    let stages = 0;
     function split(r, parts, dir) {
       let stage = stageCuts(r, parts, dir, kerf);
       if (!stage.length) {
@@ -252,17 +257,79 @@
       if (!stage.length) return; // a single panel filling the region
       const [pos, size] = dir === 'h' ? ['y', 'h'] : ['x', 'w'];
       const [from, to] = dir === 'h' ? [r.x, r.x + r.w] : [r.y, r.y + r.h];
-      for (const c of stage) cuts.push({ dir, at: (c.lo + c.hi) / 2, from, to });
+      const end = r[pos] + r[size];
+      const slice = (lo, hi) => {
+        const rect = { ...r, [pos]: lo, [size]: hi - lo };
+        const inside = parts.filter((p) => p[pos] >= lo - EPS && p[pos] + p[size] <= hi + EPS);
+        return { rect, inside };
+      };
+      const describe = ({ rect, inside }) => ({
+        w: rect.w, h: rect.h, panels: inside.map(({ label, w, h, rotated }) => ({ label, w, h, rotated })),
+      });
+      const id = stages++;
       // Pieces between the cuts; offcuts (no panels) need no further cuts.
-      const bounds = [r[pos], ...stage.flatMap((c) => [c.lo, c.hi]), r[pos] + r[size]];
-      for (let i = 0; i < bounds.length; i += 2) {
-        const piece = { ...r, [pos]: bounds[i], [size]: bounds[i + 1] - bounds[i] };
-        const inside = parts.filter((p) => p[pos] >= piece[pos] - EPS && p[pos] + p[size] <= piece[pos] + piece[size] + EPS);
-        if (inside.length) split(piece, inside, dir === 'h' ? 'v' : 'h');
-      }
+      const pieces = [];
+      let start = r[pos];
+      stage.forEach((c, i) => {
+        const piece = slice(start, c.lo);
+        pieces.push(piece);
+        const cut = {
+          dir, at: (c.lo + c.hi) / 2, from, to, stage: id,
+          stock: { w: dir === 'h' ? r.w : end - start, h: dir === 'h' ? end - start : r.h },
+          size: c.lo - start, piece: describe(piece),
+        };
+        start = c.hi;
+        if (i === stage.length - 1) {
+          const rest = slice(start, end);
+          pieces.push(rest);
+          if (end - start > EPS) cut.rest = describe(rest);
+        }
+        cuts.push(cut);
+      });
+      for (const piece of pieces) if (piece.inside.length) split(piece.rect, piece.inside, dir === 'h' ? 'v' : 'h');
     }
     split({ x: trim, y: trim, w: sheet.length - 2 * trim, h: sheet.width - 2 * trim }, placements, firstDir);
     return cuts.map((c, i) => ({ n: i + 1, ...c }));
+  }
+
+  // Cut list rows for one sheet, as text: consecutive cuts of the same stage that cut off the same
+  // thing at the same fence setting are grouped ("3–5", "Crosscut ×3"). fmt formats a number.
+  // Returns [{ cuts, type, size, stock, gives }].
+  function cutList(cuts, fmt = String) {
+    const dims = (p) => `${fmt(p.w)} × ${fmt(p.h)}`;
+    function describe(p, dir) {
+      const kind = dir === 'h' ? 'strip' : 'piece';
+      if (!p.panels.length) return `offcut ${dims(p)}`;
+      const [q] = p.panels;
+      if (p.panels.length === 1 && Math.abs(q.w - p.w) < EPS && Math.abs(q.h - p.h) < EPS) return `${q.label} ${dims(p)}`;
+      return `${kind} ${dims(p)} (${p.panels.length === 1 ? q.label : `${p.panels.length} panels`})`;
+    }
+    // A row groups either consecutive cuts of one stage (only the last leaves a rest), or the same
+    // cut repeated on identical stock, e.g. twin strips (each leaving the same rest).
+    function joins(row, c, gives, rest) {
+      if (!row || row.dir !== c.dir || Math.abs(row.size - c.size) > EPS || row.gives !== gives) return false;
+      if (row.kind !== 'twin' && row.stage === c.stage && !row.rest) return (row.kind = 'stage');
+      if (row.kind !== 'stage' && row.stage !== c.stage && row.stock === dims(c.stock) && row.rest === rest) return (row.kind = 'twin');
+      return false;
+    }
+    const rows = [];
+    for (const c of cuts) {
+      const gives = describe(c.piece, c.dir);
+      const rest = c.rest ? describe(c.rest, c.dir) : '';
+      const row = rows[rows.length - 1];
+      if (joins(row, c, gives, rest)) {
+        Object.assign(row, { to: c.n, count: row.count + 1, stage: c.stage, rest });
+      } else {
+        rows.push({ from: c.n, to: c.n, count: 1, stage: c.stage, dir: c.dir, size: c.size, stock: dims(c.stock), gives, rest });
+      }
+    }
+    return rows.map((r) => ({
+      cuts: r.count > 1 ? `${r.from}–${r.to}` : String(r.from),
+      type: `${r.dir === 'h' ? 'Rip' : 'Crosscut'}${r.count > 1 ? ` ×${r.count}` : ''}`,
+      size: fmt(r.size),
+      stock: r.stock,
+      gives: `${r.count > 1 ? `${r.count} × ` : ''}${r.gives}${r.rest ? `; rest: ${r.rest}${r.kind === 'twin' ? ' each' : ''}` : ''}`,
+    }));
   }
 
   // Lower is better: unplaced parts, then sheets used, then fragmented leftover
@@ -335,6 +402,6 @@
     guillotine: 'Best fit (mixed cuts)',
   };
 
-  global.Cutlist = { optimize, optimizeSheet, ALGORITHMS };
-  if (typeof module !== 'undefined') module.exports = { optimize, optimizeSheet, ALGORITHMS };
+  global.Cutlist = { optimize, optimizeSheet, cutList, ALGORITHMS };
+  if (typeof module !== 'undefined') module.exports = { optimize, optimizeSheet, cutList, ALGORITHMS };
 })(typeof window !== 'undefined' ? window : globalThis);

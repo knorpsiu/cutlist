@@ -53,7 +53,14 @@
     svg { width: 100%; height: auto; display: block; }
     svg[data-corners] { cursor: crosshair; touch-action: none; }
     .measure, .cuts { pointer-events: none; }
-    #results.hide-cuts .cuts { display: none; }
+    #results.hide-cuts .cuts, #results.hide-cuts .cut-list, #results.hide-cuts .cuts-note { display: none; }
+    .cut-list { margin-top: 8px; font-size: 13px; }
+    .cut-list th { border-bottom: 1px solid #ccc; }
+    .cut-list td { padding: 3px 6px; vertical-align: top; }
+    .cut-list tbody tr:nth-child(even) { background: #f6f6f6; }
+    .cut-list td.n { color: #d1242f; font-weight: 600; white-space: nowrap; }
+    .cut-list td.size { font-weight: 600; text-align: right; }
+    .cuts-note { font-size: 13px; color: #555; }
     .project { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: end; }
     .project input { width: 220px; }
     #projectStatus { font-size: 13px; color: #666; align-self: center; }
@@ -628,6 +635,9 @@
         html += `<p class="warn"><strong>${unassigned.length} panel row(s) have no material</strong> and were skipped:
           ${unassigned.map((p) => esc(p.label || `${fmt(p.length)} × ${fmt(p.width)}`)).join(', ')}</p>`;
       }
+      if (groups.some((g) => g.sheets.length)) html += `<p class="cuts-note">Cut lists: <strong>Set at</strong> is the width cut off,
+        measured from the top edge (rips) or left edge (crosscuts) of the stock as drawn; the kerf falls on the far side.
+        Re-squaring the edges (edge trim) comes before cut 1.</p>`;
       for (const g of groups) html += renderGroup(g);
       results.innerHTML = html;
       measure = null; // any measurement belonged to the old diagrams
@@ -652,7 +662,7 @@
           ${Object.entries(counts).map(([k, n]) => `${n} × ${esc(k)}`).join('<br>')}</p>`;
       }
       sheets.forEach((s, i) => {
-        html += `<div class="sheet"><h3>Sheet ${i + 1} of ${sheets.length} — ${s.placements.length} panels</h3>${sheetSvg(material, s)}</div>`;
+        html += `<div class="sheet"><h3>Sheet ${i + 1} of ${sheets.length} — ${s.placements.length} panels</h3>${sheetSvg(material, s)}${cutListTable(s.cuts)}</div>`;
       });
       return html + '</div>';
     }
@@ -690,6 +700,14 @@
           <text y="${f * 1.1}" font-size="${f * 0.85}">${esc(dims)}</text></g>`;
       }
       return out + cutsSvg(s.cuts, font) + '</svg>';
+    }
+
+    function cutListTable(cuts = []) {
+      if (!cuts.length) return '';
+      const rows = Cutlist.cutList(cuts, fmt).map((r) => `<tr><td class="n">${r.cuts}</td><td>${r.type}</td>
+        <td class="size">${r.size}</td><td>${r.stock}</td><td>${esc(r.gives)}</td></tr>`).join('');
+      return `<table class="cut-list"><thead><tr><th>Cut</th><th>Operation</th><th>Set at</th><th>Cut from</th><th>Gives</th></tr></thead>
+        <tbody>${rows}</tbody></table>`;
     }
 
     // Cut lines in saw order, drawn over the panels. Each number sits near the start of its line,

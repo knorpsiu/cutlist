@@ -2,6 +2,8 @@
 // and the cutlist report built on it: sheet goods table, panels table, then every cut layout.
 (function (global) {
   const PAGE_W = 595.28; // A4 portrait, in points
+  // Cut list rows come from the optimizer (loaded before this script in the page).
+  const { cutList } = global.Cutlist || require('./optimizer.js');
   const PAGE_H = 841.89;
 
   // Helvetica glyph widths (1/1000 em) for ASCII 32..126; other characters use 556.
@@ -266,6 +268,20 @@
       }
     }
 
+    function cutListTable(cuts) {
+      y += 8;
+      table(
+        [
+          { title: 'Cut', width: 36 },
+          { title: 'Operation', width: 72 },
+          { title: 'Set at', width: 44, align: 'right' },
+          { title: 'Cut from', width: 72 },
+          { title: 'Gives', width: 291.28 },
+        ],
+        cutList(cuts, fmt).map((r) => [r.cuts, r.type, r.size, r.stock, r.gives]),
+      );
+    }
+
     newPage();
 
     // Title block, with the app logo drawn in vector.
@@ -318,6 +334,12 @@
     heading('Cut layouts');
     pdf.text('Panels marked (R) are rotated 90°. Dashed red line: edge trim.', MARGIN, y + 8, { size: 8.5, color: GREY });
     y += 10;
+    if (showCuts) {
+      pdf.text('Cut lists: "Set at" is the width cut off, measured from the top edge (rips) or left edge (crosscuts) of the stock',
+        MARGIN, y + 9, { size: 8.5, color: GREY });
+      pdf.text('as drawn; the kerf falls on the far side. Re-squaring the edges (edge trim) comes before cut 1.', MARGIN, y + 19, { size: 8.5, color: GREY });
+      y += 20;
+    }
     if (result.unassigned.length) {
       y += 14;
       pdf.text(fit(`${result.unassigned.length} panel row(s) have no material and were skipped: `
@@ -342,7 +364,10 @@
         pdf.text(fit(`${g.unplaced.length} panel(s) did not fit: `
           + Object.entries(counts).map(([k, c]) => `${c} × ${k}`).join(', '), CONTENT_W, 9), MARGIN, y, { size: 9, color: RED });
       }
-      g.sheets.forEach((sheet, i) => sheetDiagram(g.material, sheet, i, g.sheets.length));
+      g.sheets.forEach((sheet, i) => {
+        sheetDiagram(g.material, sheet, i, g.sheets.length);
+        if (showCuts && sheet.cuts?.length) cutListTable(sheet.cuts);
+      });
     }
 
     // Footers, now that the page count is known.
