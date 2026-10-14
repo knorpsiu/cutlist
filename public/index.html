@@ -665,12 +665,14 @@
 
     // ---- Measuring tool --------------------------------------------------------------------
     // Click a corner to start; a dotted line follows the mouse (snapping to nearby corners) with
-    // a distance label. The next click, or Escape, clears it.
+    // a distance label. Holding Shift keeps the line horizontal or vertical. The next click, or
+    // Escape, clears it.
 
     const SNAP_PX = 10;
     const SVG_NS = 'http://www.w3.org/2000/svg';
     let measure = null; // { svg, start: {x, y} } while measuring
     let hoverSvg = null;
+    let lastPointer = null; // { svg, point } — to redraw when Shift is pressed without moving
 
     const pxPerUnit = (svg) => svg.getScreenCTM().a;
     const toSvg = (svg, e) => new DOMPoint(e.clientX, e.clientY).matrixTransform(svg.getScreenCTM().inverse());
@@ -701,7 +703,7 @@
       if (!g) {
         g = document.createElementNS(SVG_NS, 'g');
         g.setAttribute('class', 'measure');
-        g.innerHTML = '<line class="m-line"/><circle class="m-start"/><circle class="m-snap"/><rect class="m-bg"/><text class="m-text"/>';
+        g.innerHTML = '<line class="m-line"/><circle class="m-start"/><circle class="m-snap"/><rect class="m-bg"/><text class="m-text"/><line class="m-guide"/>';
         svg.append(g);
       }
       return g;
@@ -711,11 +713,13 @@
     const show = (el, visible) => el.setAttribute('visibility', visible ? 'visible' : 'hidden');
 
     // Draw the snap ring, and the measurement if one is in progress on this diagram.
-    function drawMeasure(svg, pointer) {
+    // ortho: constrain the line to horizontal or vertical (whichever the pointer is further along).
+    function drawMeasure(svg, pointer, ortho = false) {
       const g = overlay(svg);
       const u = 1 / pxPerUnit(svg); // one screen pixel in diagram units
       const snap = pointer && nearestCorner(svg, pointer);
-      const [line, startDot, snapRing, bg, text] = g.children;
+      const [line, startDot, snapRing, bg, text, guide] = g.children;
+      show(guide, false);
 
       show(snapRing, !!snap);
       if (snap) attrs(snapRing, { cx: snap.x, cy: snap.y, r: 6 * u, fill: 'none', stroke: '#c53030', 'stroke-width': 2 * u });
@@ -729,7 +733,17 @@
       const { start } = measure;
       attrs(startDot, { cx: start.x, cy: start.y, r: 4 * u, fill: '#c53030' });
 
-      const end = snap || pointer;
+      let end = snap || pointer;
+      if (ortho) {
+        const horizontal = Math.abs(pointer.x - start.x) >= Math.abs(pointer.y - start.y);
+        end = horizontal ? { x: end.x, y: start.y } : { x: start.x, y: end.y };
+        // Faint guide from the snapped corner to the line's end, showing which corner sets the distance.
+        if (snap && (snap.x !== end.x || snap.y !== end.y)) {
+          show(guide, true);
+          attrs(guide, { x1: snap.x, y1: snap.y, x2: end.x, y2: end.y, stroke: '#c53030', 'stroke-opacity': 0.6,
+            'stroke-width': u, 'stroke-dasharray': `${2 * u} ${3 * u}` });
+        }
+      }
       attrs(line, { x1: start.x, y1: start.y, x2: end.x, y2: end.y, stroke: '#111', 'stroke-width': 1.5 * u,
         'stroke-dasharray': `${6 * u} ${4 * u}` });
 
@@ -762,11 +776,13 @@
       const svg = e.target.closest('svg[data-corners]');
       if (hoverSvg && hoverSvg !== svg) drawMeasure(hoverSvg, null);
       hoverSvg = svg;
-      if (svg) drawMeasure(svg, toSvg(svg, e));
+      lastPointer = svg && { svg, point: toSvg(svg, e) };
+      if (svg) drawMeasure(svg, lastPointer.point, e.shiftKey);
     });
     results.addEventListener('pointerleave', () => {
       if (hoverSvg && hoverSvg !== measure?.svg) drawMeasure(hoverSvg, null);
       hoverSvg = null;
+      lastPointer = null;
     });
     results.addEventListener('click', (e) => {
       if (measure) return clearMeasure();
@@ -774,9 +790,14 @@
       const corner = svg && nearestCorner(svg, toSvg(svg, e));
       if (!corner) return;
       measure = { svg, start: corner };
-      drawMeasure(svg, toSvg(svg, e));
+      drawMeasure(svg, toSvg(svg, e), e.shiftKey);
     });
     document.addEventListener('keydown', (e) => e.key === 'Escape' && clearMeasure());
+    for (const type of ['keydown', 'keyup']) {
+      document.addEventListener(type, (e) => {
+        if (e.key === 'Shift' && measure && lastPointer?.svg === measure.svg) drawMeasure(measure.svg, lastPointer.point, e.shiftKey);
+      });
+    }
 
     // Text measurement for diagram labels (SVG text uses the page font).
     const measureCtx = document.createElement('canvas').getContext('2d');

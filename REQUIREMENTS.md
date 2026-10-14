@@ -82,6 +82,7 @@ Diagram labels (screen and PDF):
 - Clicking a corner starts a measurement: a dotted line from that corner follows the mouse; its end snaps to nearby corners (exact corner-to-corner values), otherwise follows the mouse freely.
 - Label next to the cursor: straight-line distance plus horizontal/vertical components, e.g. `947.26 (Δx 560, Δy 764)`; flips to stay inside the sheet.
 - Only one active measurement: the next click anywhere (or Escape) clears it. A click away from a corner does not start one.
+- Holding Shift constrains the line to horizontal or vertical (whichever direction the mouse is further along); releasing it returns to free measuring. Takes effect immediately on key press/release. With Shift, a nearby corner still snaps: the line ends level with that corner, and a faint red guide links the corner to the line's end.
 
 ### Backlog (candidates for next iterations, not committed)
 - Grain direction per panel (lock rotation) — deprioritized by the user (2026-10-14).
@@ -105,3 +106,4 @@ Diagram labels (screen and PDF):
 | 2026-10-14 | MVP-5: PDF export generated client-side by a hand-written minimal PDF writer (vector, zero deps) rather than a library or the print dialog. |
 | 2026-10-14 | Diagram text follows the panel's longest edge and is fitted to the panel (fixes labels overlapping neighbours). |
 | 2026-10-14 | MVP-6: measuring tool with corner snapping on the diagrams; label shows distance + Δx/Δy. Grain direction deprioritized. |
+| 2026-10-14 | Shift while measuring = orthogonal (horizontal/vertical) line, still snapping to corners along the axis. |
