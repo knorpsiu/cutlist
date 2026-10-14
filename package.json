@@ -1,0 +1,14 @@
+{
+  "name": "cutlist",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sheet goods cut optimizer for furniture makers",
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server.js",
+    "dev": "node --disable-warning=ExperimentalWarning --watch server.js",
+    "debug": "node --disable-warning=ExperimentalWarning --inspect --watch server.js"
+  },
+  "engines": {
+    "node": ">=22.13"
+  }
+}

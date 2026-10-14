@@ -1,0 +1,619 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>cutlist</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0 auto; max-width: 1100px; padding: 16px; color: #222; }
+    h1 { margin: 0 0 4px; }
+    .sub { color: #666; margin: 0 0 20px; }
+    fieldset { border: 1px solid #ccc; border-radius: 6px; margin: 0 0 16px; padding: 12px 16px; overflow-x: auto; }
+    legend { font-weight: 600; padding: 0 6px; }
+    .row { display: flex; flex-wrap: wrap; gap: 12px; }
+    label { display: flex; flex-direction: column; font-size: 13px; color: #555; gap: 2px; }
+    input, select { font: inherit; padding: 4px 6px; }
+    input { width: 90px; }
+    input.label { width: 140px; }
+    #panels input.label { width: 210px; }
+    input.num { text-align: right; }
+    input.invalid { border-color: #c53030; background: #fff5f5; outline-color: #c53030; }
+    table { border-collapse: collapse; }
+    th { text-align: left; font-size: 13px; color: #555; font-weight: 500; padding: 2px 6px; }
+    td { padding: 2px 6px; }
+    button { font: inherit; padding: 6px 14px; cursor: pointer; }
+    #optimize { background: #2b6cb0; color: #fff; border: 0; border-radius: 4px; font-weight: 600; }
+    .remove { padding: 2px 8px; }
+    .handle { cursor: grab; touch-action: none; user-select: none; color: #999; font-size: 18px; padding: 0 2px 0 0; }
+    .handle:hover { color: #333; }
+    tr.dragging { opacity: 0.6; background: #e8eef7; }
+    body.reordering, body.reordering * { cursor: grabbing !important; user-select: none; }
+    .color-btn { display: flex; align-items: center; gap: 6px; width: 130px; padding: 4px 8px; border: 1px solid #0005; border-radius: 3px; text-align: left; }
+    .color-btn .color-name { flex: 1; }
+    .color-menu { inset: auto; margin: 0; padding: 6px; border: 1px solid #999; border-radius: 4px; background: #fff; box-shadow: 0 4px 14px #0003;
+                  grid-template-columns: repeat(2, 120px); gap: 4px; }
+    .color-menu:popover-open { display: grid; }
+    .color-menu button { padding: 5px 8px; border: 1px solid #0003; border-radius: 3px; text-align: left; }
+    .color-menu button:hover, .color-menu button:focus-visible { outline: 2px solid #222; outline-offset: 1px; }
+    .color-menu button.selected { font-weight: 600; }
+    .color-menu button.selected::after { content: ' ✓'; }
+    .swatch { display: inline-block; width: 14px; height: 14px; border: 1px solid #0004; border-radius: 3px; vertical-align: -1px; margin-right: 6px; }
+    .stats { display: flex; gap: 24px; flex-wrap: wrap; margin: 12px 0; }
+    .stats div { font-size: 13px; color: #555; }
+    .stats strong { display: block; font-size: 22px; color: #222; }
+    .warn { background: #fff4e5; border: 1px solid #f0b46c; padding: 8px 12px; border-radius: 4px; }
+    .material { margin: 28px 0; border-top: 2px solid #ddd; padding-top: 8px; }
+    .material h2 { margin: 0; font-size: 18px; }
+    .sheet { margin: 16px 0; }
+    .sheet h3 { margin: 0 0 6px; font-size: 15px; }
+    svg { width: 100%; height: auto; display: block; }
+    .project { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: end; }
+    .project input { width: 220px; }
+    #projectStatus { font-size: 13px; color: #666; align-self: center; }
+    #projectStatus.dirty { color: #b7791f; }
+    #projectStatus.error { color: #c53030; }
+  </style>
+</head>
+<body>
+  <h1>cutlist</h1>
+  <p class="sub">Sheet goods cut optimizer. Use any unit (mm or inches) — just be consistent.</p>
+
+  <fieldset>
+    <legend>Project</legend>
+    <div class="project">
+      <label>Open <select id="projectList"></select></label>
+      <label>Name <input id="projectName" placeholder="e.g. Kitchen cabinets"></label>
+      <button id="saveProject" type="button">Save</button>
+      <button id="saveProjectAs" type="button">Save as new</button>
+      <button id="newProject" type="button">New</button>
+      <button id="deleteProject" type="button">Delete</button>
+      <span id="projectStatus"></span>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Sheet goods</legend>
+    <table>
+      <thead><tr><th></th><th>Name</th><th>Thickness</th><th>Length</th><th>Width</th><th>Qty</th><th>Edge trim</th><th>Colour</th><th></th></tr></thead>
+      <tbody id="materials"></tbody>
+    </table>
+    <p><button id="addMaterial" type="button">+ Add sheet good</button></p>
+    <div class="row">
+      <label>Blade kerf <input id="kerf" class="num" value="3"></label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Panels</legend>
+    <table>
+      <thead><tr><th></th><th>Label</th><th>Length</th><th>Width</th><th>Qty</th><th>Material</th><th></th></tr></thead>
+      <tbody id="panels"></tbody>
+    </table>
+    <p><button id="addPanel" type="button">+ Add panel</button></p>
+  </fieldset>
+
+  <button id="optimize" type="button">Optimize</button>
+
+  <section id="results"></section>
+
+  <script src="formula.js"></script>
+  <script src="optimizer.js"></script>
+  <script>
+    const materialsBody = document.getElementById('materials');
+    const panelsBody = document.getElementById('panels');
+    const results = document.getElementById('results');
+    const newId = () => `m${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+
+    // Palette for telling materials apart in the cut diagrams. No greys: grey marks waste.
+    const COLORS = [
+      { name: 'Red', fill: '#e53935' },
+      { name: 'Orange', fill: '#fb8c00' },
+      { name: 'Yellow', fill: '#fdd835' },
+      { name: 'Lime', fill: '#c0ca33' },
+      { name: 'Green', fill: '#43a047' },
+      { name: 'Light green', fill: '#a5d6a7' },
+      { name: 'Teal', fill: '#00897b' },
+      { name: 'Cyan', fill: '#26c6da' },
+      { name: 'Sky blue', fill: '#90caf9' },
+      { name: 'Blue', fill: '#1e88e5' },
+      { name: 'Navy', fill: '#283593' },
+      { name: 'Purple', fill: '#8e24aa' },
+      { name: 'Lavender', fill: '#c5b3e6' },
+      { name: 'Pink', fill: '#f48fb1' },
+      { name: 'Maroon', fill: '#880e4f' },
+      { name: 'Brown', fill: '#8d6e63' },
+    ].map((c) => ({ ...c, ...shadesFor(c.fill) }));
+
+    // Label text and outline colours that stay readable on the given fill.
+    function shadesFor(hex) {
+      const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+      const light = 0.299 * r + 0.587 * g + 0.114 * b > 140;
+      return { text: light ? '#1a1a1a' : '#ffffff', stroke: light ? '#555555' : '#1a1a1a' };
+    }
+
+    const colorOf = (id) => COLORS.find((c) => c.fill === id) || COLORS[0];
+
+    // Default colour for a new sheet good: the first unused one, visiting the palette
+    // in a spread-out order so consecutive materials get clearly different shades.
+    const DEFAULT_ORDER = [9, 1, 4, 11, 2, 0, 7, 13, 15, 3, 10, 6, 12, 14, 8, 5];
+    function unusedColor() {
+      const used = new Set([...materialsBody.querySelectorAll('select.color')].map((s) => s.value));
+      const i = DEFAULT_ORDER.find((i) => !used.has(COLORS[i].fill));
+      return COLORS[i ?? DEFAULT_ORDER[materialsBody.rows.length % COLORS.length]].fill;
+    }
+
+    // The colour picker: a button showing swatch + name, backed by a hidden <select> that holds
+    // the value. One shared popover menu lists the palette with swatches.
+    function paintColorSelect(select) {
+      const c = colorOf(select.value);
+      const btn = select.nextElementSibling;
+      btn.style.background = c.fill;
+      btn.style.color = c.text;
+      btn.querySelector('.color-name').textContent = c.name;
+    }
+
+    const colorMenu = document.createElement('div');
+    colorMenu.className = 'color-menu';
+    colorMenu.popover = 'auto';
+    document.body.append(colorMenu);
+    let menuSelect = null;
+
+    function openColorMenu(select, btn) {
+      menuSelect = select;
+      colorMenu.innerHTML = COLORS.map((c) => `
+        <button type="button" data-fill="${c.fill}" class="${c.fill === select.value ? 'selected' : ''}"
+          style="background:${c.fill};color:${c.text}">${c.name}</button>`).join('');
+      colorMenu.showPopover();
+      const r = btn.getBoundingClientRect();
+      const m = colorMenu.getBoundingClientRect();
+      const below = r.bottom + 2 + m.height <= innerHeight;
+      colorMenu.style.top = `${below ? r.bottom + 2 : Math.max(4, r.top - 2 - m.height)}px`;
+      colorMenu.style.left = `${Math.min(r.left, innerWidth - m.width - 4)}px`;
+      colorMenu.querySelector('.selected')?.focus();
+    }
+
+    colorMenu.addEventListener('click', (e) => {
+      const choice = e.target.closest('button');
+      if (!choice) return;
+      menuSelect.value = choice.dataset.fill;
+      menuSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      colorMenu.hidePopover();
+      menuSelect.nextElementSibling.focus();
+    });
+    // The menu is positioned against the viewport, so close it rather than let it drift on scroll.
+    addEventListener('scroll', () => colorMenu.matches(':popover-open') && colorMenu.hidePopover(), true);
+
+    // Numeric fields accept plain numbers or formulas like "=2400-60-60" (see formula.js).
+    const num = (v) => Formula.toNumber(v) || 0;
+    const int = (v) => Math.trunc(num(v));
+
+    // On Enter or leaving the field, replace a formula with its result, or flag it if invalid.
+    function commitFormula(input) {
+      const text = input.value.trim();
+      input.dataset.title ??= input.title;
+      let error = null;
+      if (text !== '') {
+        try {
+          const value = Formula.evaluate(text);
+          if (String(value) !== text) input.value = value;
+        } catch (err) {
+          error = err.message;
+        }
+      }
+      input.classList.toggle('invalid', !!error);
+      input.title = error ? `Invalid formula: ${error}` : input.dataset.title;
+    }
+    document.addEventListener('change', (e) => e.target.matches('input.num') && commitFormula(e.target));
+    document.addEventListener('keydown', (e) => e.key === 'Enter' && e.target.matches('input.num') && commitFormula(e.target));
+
+    const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const fmt = (n) => +n.toFixed(2);
+    const materialName = (m) => `${m.name || 'Unnamed'}${m.thickness ? ` ${fmt(m.thickness)}` : ''}`;
+
+    // Show unset (zero) dimensions as empty fields.
+    const blank = (n) => n || '';
+
+    function addMaterialRow(m = {}) {
+      m = { name: '', qty: 1, trim: 0, ...m };
+      // Colours not in the palette (e.g. from an older version) get a fresh default.
+      const color = COLORS.some((c) => c.fill === m.color) ? m.color : unusedColor();
+      const tr = document.createElement('tr');
+      tr.dataset.id = m.id || newId();
+      tr.innerHTML = `
+        <td class="handle" title="Drag to reorder">⠿</td>
+        <td><input class="label" value="${esc(m.name)}" placeholder="e.g. Plywood"></td>
+        <td><input class="num" value="${blank(m.thickness)}"></td>
+        <td><input class="num" value="${blank(m.length)}"></td>
+        <td><input class="num" value="${blank(m.width)}"></td>
+        <td><input class="num" value="${m.qty}"></td>
+        <td><input class="num" value="${m.trim}" title="Removed from each edge to re-square the sheet"></td>
+        <td><select class="color" hidden>${COLORS.map((c) => `<option value="${c.fill}">${c.name}</option>`).join('')}</select><button
+          type="button" class="color-btn" title="Colour used for this material in the cut diagrams"><span class="color-name"></span>▾</button></td>
+        <td><button class="remove" type="button" title="Remove">✕</button></td>`;
+      tr.querySelector('.remove').onclick = () => { tr.remove(); refreshMaterialSelects(); markDirty(); };
+      tr.addEventListener('input', refreshMaterialSelects);
+      const colorSelect = tr.querySelector('select.color');
+      colorSelect.value = color;
+      paintColorSelect(colorSelect);
+      colorSelect.addEventListener('change', () => paintColorSelect(colorSelect));
+      // Pressing the button of an already-open menu closes it (light dismiss) rather than reopening it.
+      const colorBtn = colorSelect.nextElementSibling;
+      let wasOpen = false;
+      colorBtn.onpointerdown = () => { wasOpen = colorMenu.matches(':popover-open') && menuSelect === colorSelect; };
+      colorBtn.onclick = () => {
+        if (!wasOpen) openColorMenu(colorSelect, colorBtn);
+        wasOpen = false;
+      };
+      materialsBody.appendChild(tr);
+      refreshMaterialSelects();
+      return tr.dataset.id;
+    }
+
+    function readMaterials() {
+      return [...materialsBody.rows].map((tr) => {
+        const [name, thickness, length, width, qty, trim] = [...tr.querySelectorAll('input')].map((i) => i.value);
+        return {
+          id: tr.dataset.id,
+          name: name.trim(),
+          thickness: num(thickness),
+          length: num(length),
+          width: num(width),
+          qty: Math.max(1, int(qty)),
+          trim: num(trim),
+          color: tr.querySelector('select.color').value,
+        };
+      });
+    }
+
+    // Keep every panel's material dropdown in sync with the sheet goods table.
+    function refreshMaterialSelects() {
+      const options = readMaterials().map((m) => `<option value="${m.id}">${esc(materialName(m))}</option>`).join('');
+      for (const select of panelsBody.querySelectorAll('select')) {
+        const current = select.value;
+        select.innerHTML = '<option value="">— choose —</option>' + options;
+        select.value = [...select.options].some((o) => o.value === current) ? current : '';
+      }
+    }
+
+    function addPanelRow(p = {}) {
+      p = { label: '', qty: 1, material: '', ...p };
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="handle" title="Drag to reorder">⠿</td>
+        <td><input class="label" value="${esc(p.label)}"></td>
+        <td><input class="num" value="${blank(p.length)}"></td>
+        <td><input class="num" value="${blank(p.width)}"></td>
+        <td><input class="num" value="${blank(p.qty)}"></td>
+        <td><select></select></td>
+        <td><button class="remove" type="button" title="Remove">✕</button></td>`;
+      tr.querySelector('.remove').onclick = () => { tr.remove(); markDirty(); };
+      panelsBody.appendChild(tr);
+      refreshMaterialSelects();
+      // Default a new panel to the material of the previous row.
+      const prev = tr.previousElementSibling?.querySelector('select').value || '';
+      tr.querySelector('select').value = p.material || prev;
+    }
+
+    // Every panel row as entered (used for saving); readPanels() keeps only usable ones.
+    function readPanelRows() {
+      return [...panelsBody.rows].map((tr) => {
+        const [label, length, width, qty] = [...tr.querySelectorAll('input')].map((i) => i.value);
+        return {
+          label: label.trim(),
+          length: num(length),
+          width: num(width),
+          qty: int(qty),
+          material: tr.querySelector('select').value,
+        };
+      });
+    }
+
+    // Drag-and-drop reordering of a table's rows by their .handle cell (mouse and touch).
+    function enableRowReorder(tbody, onReorder) {
+      tbody.addEventListener('pointerdown', (e) => {
+        const handle = e.target.closest('.handle');
+        if (!handle || e.button !== 0) return;
+        e.preventDefault();
+        const row = handle.closest('tr');
+        const startIndex = row.sectionRowIndex;
+        row.classList.add('dragging');
+        document.body.classList.add('reordering');
+
+        // Move the row next to whichever row the pointer is over (before it in its top half, after in its bottom half).
+        const move = (ev) => {
+          const rows = [...tbody.rows];
+          const first = rows[0].getBoundingClientRect();
+          const last = rows[rows.length - 1].getBoundingClientRect();
+          if (ev.clientY < first.top) return tbody.prepend(row);
+          if (ev.clientY > last.bottom) return tbody.append(row);
+          for (const other of rows) {
+            if (other === row) continue;
+            const r = other.getBoundingClientRect();
+            if (ev.clientY >= r.top && ev.clientY <= r.bottom) {
+              if (ev.clientY < r.top + r.height / 2) other.before(row);
+              else other.after(row);
+              break;
+            }
+          }
+        };
+        const end = () => {
+          removeEventListener('pointermove', move);
+          removeEventListener('pointerup', end);
+          removeEventListener('pointercancel', end);
+          row.classList.remove('dragging');
+          document.body.classList.remove('reordering');
+          if (row.sectionRowIndex !== startIndex) onReorder();
+        };
+        addEventListener('pointermove', move);
+        addEventListener('pointerup', end);
+        addEventListener('pointercancel', end);
+      });
+    }
+    enableRowReorder(panelsBody, () => markDirty());
+    enableRowReorder(materialsBody, () => { refreshMaterialSelects(); markDirty(); });
+
+    const readPanels = () => readPanelRows().filter((p) => p.length > 0 && p.width > 0 && p.qty > 0);
+
+    // Example data so the page is useful on first open.
+    const EXAMPLE = {
+      kerf: 3,
+      materials: [
+        { id: 'ply18', name: 'Plywood', thickness: 18, length: 2440, width: 1220, qty: 3, trim: 10 },
+        { id: 'mdf18', name: 'MDF', thickness: 18, length: 2440, width: 1220, qty: 2, trim: 0 },
+        { id: 'ply5', name: 'Plywood', thickness: 5, length: 2440, width: 1220, qty: 1, trim: 10 },
+      ],
+      panels: [
+        { label: 'Side', length: 720, width: 560, qty: 2, material: 'ply18' },
+        { label: 'Top/Bottom', length: 764, width: 560, qty: 2, material: 'ply18' },
+        { label: 'Shelf', length: 762, width: 540, qty: 3, material: 'ply18' },
+        { label: 'Door', length: 716, width: 390, qty: 2, material: 'mdf18' },
+        { label: 'Back', length: 784, width: 720, qty: 1, material: 'ply5' },
+      ],
+    };
+
+    // ---- Projects -------------------------------------------------------------------------
+
+    const projectList = document.getElementById('projectList');
+    const projectName = document.getElementById('projectName');
+    const projectStatus = document.getElementById('projectStatus');
+    const LAST_PROJECT_KEY = 'cutlist.lastProjectId';
+    let currentId = null;
+    let dirty = false;
+    let loading = false;
+
+    function setStatus(text, kind = '') {
+      projectStatus.textContent = text;
+      projectStatus.className = kind;
+    }
+
+    function markDirty() {
+      if (loading || dirty) return;
+      dirty = true;
+      setStatus('Unsaved changes', 'dirty');
+    }
+
+    function remember(id) {
+      try {
+        if (id) localStorage.setItem(LAST_PROJECT_KEY, id);
+        else localStorage.removeItem(LAST_PROJECT_KEY);
+      } catch {}
+    }
+
+    const projectData = () => ({
+      kerf: num(document.getElementById('kerf').value),
+      materials: readMaterials(),
+      panels: readPanelRows(),
+    });
+
+    // Replace the whole form with the given project data.
+    function fillForm(name, data) {
+      loading = true;
+      projectName.value = name;
+      document.getElementById('kerf').value = data.kerf ?? 3;
+      materialsBody.innerHTML = '';
+      panelsBody.innerHTML = '';
+      (data.materials || []).forEach(addMaterialRow);
+      (data.panels || []).forEach(addPanelRow);
+      results.innerHTML = '';
+      loading = false;
+      dirty = false;
+    }
+
+    async function api(method, url, body) {
+      const res = await fetch(url, {
+        method,
+        headers: body ? { 'Content-Type': 'application/json' } : {},
+        body: body && JSON.stringify(body),
+      });
+      const json = res.status === 204 ? null : await res.json();
+      if (!res.ok) throw new Error(json?.error || `Request failed (${res.status})`);
+      return json;
+    }
+
+    async function refreshProjectList() {
+      const projects = await api('GET', '/api/projects');
+      projectList.innerHTML = '<option value="">— select —</option>' + projects
+        .map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+      projectList.value = currentId ?? '';
+    }
+
+    const confirmDiscard = () => !dirty || confirm('You have unsaved changes. Discard them?');
+
+    async function openProject(id) {
+      const project = await api('GET', `/api/projects/${id}`);
+      currentId = project.id;
+      fillForm(project.name, project.data);
+      projectList.value = currentId;
+      remember(currentId);
+      setStatus(`Opened · last saved ${new Date(project.updatedAt).toLocaleString()}`);
+    }
+
+    function newProject(data = { kerf: 3, materials: [{}], panels: [{}] }, name = '') {
+      currentId = null;
+      fillForm(name, data);
+      projectList.value = '';
+      remember(null);
+      setStatus('New project — not saved yet');
+    }
+
+    async function saveProject(asNew = false) {
+      const name = projectName.value.trim();
+      if (!name) {
+        setStatus('Enter a project name to save', 'error');
+        projectName.focus();
+        return;
+      }
+      try {
+        const body = { name, data: projectData() };
+        const project = currentId && !asNew
+          ? await api('PUT', `/api/projects/${currentId}`, body)
+          : await api('POST', '/api/projects', body);
+        currentId = project.id;
+        dirty = false;
+        remember(currentId);
+        await refreshProjectList();
+        setStatus(`Saved ${new Date(project.updatedAt).toLocaleTimeString()}`);
+      } catch (err) {
+        setStatus(err.message, 'error');
+      }
+    }
+
+    async function deleteProject() {
+      if (!currentId) return setStatus('This project has not been saved', 'error');
+      if (!confirm(`Delete project "${projectName.value}"? This cannot be undone.`)) return;
+      try {
+        await api('DELETE', `/api/projects/${currentId}`);
+        newProject();
+        await refreshProjectList();
+        setStatus('Project deleted');
+      } catch (err) {
+        setStatus(err.message, 'error');
+      }
+    }
+
+    projectList.onchange = async () => {
+      const id = projectList.value;
+      if (!id || Number(id) === currentId) return;
+      if (!confirmDiscard()) {
+        projectList.value = currentId ?? '';
+        return;
+      }
+      try {
+        await openProject(id);
+      } catch (err) {
+        setStatus(err.message, 'error');
+        projectList.value = currentId ?? '';
+      }
+    };
+    document.getElementById('saveProject').onclick = () => saveProject();
+    document.getElementById('saveProjectAs').onclick = () => saveProject(true);
+    document.getElementById('newProject').onclick = () => confirmDiscard() && newProject();
+    document.getElementById('deleteProject').onclick = deleteProject;
+    window.addEventListener('beforeunload', (e) => { if (dirty) e.preventDefault(); });
+
+    // Any edit to the project form marks it as changed.
+    for (const id of ['projectName', 'kerf', 'materials', 'panels']) {
+      document.getElementById(id).addEventListener('input', markDirty);
+      document.getElementById(id).addEventListener('change', markDirty);
+    }
+
+    document.getElementById('addMaterial').onclick = () => { addMaterialRow(); markDirty(); };
+    document.getElementById('addPanel').onclick = () => { addPanelRow(); markDirty(); };
+    document.getElementById('optimize').onclick = runOptimize;
+
+    // Start with the last opened project, or the example if there is none.
+    (async () => {
+      let lastId = null;
+      try { lastId = localStorage.getItem(LAST_PROJECT_KEY); } catch {}
+      try {
+        if (lastId) await openProject(lastId);
+      } catch {
+        lastId = null;
+      }
+      if (!currentId) newProject(EXAMPLE, 'Example cabinet');
+      try {
+        await refreshProjectList();
+      } catch (err) {
+        setStatus(`Could not load projects: ${err.message}`, 'error');
+      }
+    })();
+
+    function runOptimize() {
+      const invalidField = document.querySelector('input.num.invalid');
+      if (invalidField) {
+        results.innerHTML = '<p class="warn">Fix the invalid formula (highlighted in red) before optimizing.</p>';
+        invalidField.focus();
+        return;
+      }
+      const materials = readMaterials();
+      const panels = readPanels();
+      if (!panels.length) {
+        results.innerHTML = '<p class="warn">Add at least one panel.</p>';
+        return;
+      }
+      const invalid = materials.filter((m) => panels.some((p) => p.material === m.id)
+        && (m.length <= 2 * m.trim || m.width <= 2 * m.trim));
+      if (invalid.length) {
+        results.innerHTML = `<p class="warn">Sheet size is missing or too small for its edge trim: ${invalid.map((m) => esc(materialName(m))).join(', ')}.</p>`;
+        return;
+      }
+      const kerf = num(document.getElementById('kerf').value);
+      render(Cutlist.optimize({ kerf, materials, panels }));
+    }
+
+    function render({ groups, unassigned }) {
+      let html = '';
+      if (unassigned.length) {
+        html += `<p class="warn"><strong>${unassigned.length} panel row(s) have no material</strong> and were skipped:
+          ${unassigned.map((p) => esc(p.label || `${fmt(p.length)} × ${fmt(p.width)}`)).join(', ')}</p>`;
+      }
+      for (const g of groups) html += renderGroup(g);
+      results.innerHTML = html;
+    }
+
+    function renderGroup({ material, sheets, unplaced, stats }) {
+      let html = `
+        <div class="material">
+          <h2><span class="swatch" style="background:${material.color}"></span>${esc(materialName(material))} <small>(${fmt(material.length)} × ${fmt(material.width)})</small></h2>
+          <div class="stats">
+            <div><strong>${stats.sheetsUsed} / ${material.qty}</strong>sheets used</div>
+            <div><strong>${(stats.yield * 100).toFixed(1)}%</strong>yield</div>
+            <div><strong>${stats.partsPlaced}</strong>panels placed</div>
+          </div>`;
+      if (unplaced.length) {
+        const counts = {};
+        unplaced.forEach((p) => {
+          const key = `${p.label} (${fmt(p.w)} × ${fmt(p.h)})`;
+          counts[key] = (counts[key] || 0) + 1;
+        });
+        html += `<p class="warn"><strong>${unplaced.length} panel(s) did not fit</strong> (too large, or not enough sheets):<br>
+          ${Object.entries(counts).map(([k, n]) => `${n} × ${esc(k)}`).join('<br>')}</p>`;
+      }
+      sheets.forEach((s, i) => {
+        html += `<div class="sheet"><h3>Sheet ${i + 1} of ${sheets.length} — ${s.placements.length} panels</h3>${sheetSvg(material, s)}</div>`;
+      });
+      return html + '</div>';
+    }
+
+    function sheetSvg(material, s) {
+      const { length: L, width: W, trim: t } = material;
+      const font = Math.max(L, W) / 60;
+      const c = colorOf(material.color);
+      let out = `<svg viewBox="-2 -2 ${L + 4} ${W + 4}" xmlns="http://www.w3.org/2000/svg">
+        <rect x="0" y="0" width="${L}" height="${W}" fill="#d9d9d9" stroke="#555" stroke-width="2"/>`;
+      if (t > 0) {
+        out += `<rect x="${t}" y="${t}" width="${L - 2 * t}" height="${W - 2 * t}" fill="#ececec" stroke="#b33" stroke-width="1" stroke-dasharray="8 6"/>`;
+      }
+      for (const p of s.placements) {
+        const cx = p.x + p.w / 2, cy = p.y + p.h / 2;
+        const f = Math.min(font, p.w / 6, p.h / 3);
+        out += `<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" fill="${c.fill}" stroke="${c.stroke}" stroke-width="1.5"/>
+          <text x="${cx}" y="${cy - f * 0.2}" font-size="${f}" text-anchor="middle" fill="${c.text}">${esc(p.label)}</text>
+          <text x="${cx}" y="${cy + f * 1.1}" font-size="${f * 0.85}" text-anchor="middle" fill="${c.text}">${fmt(p.w)} × ${fmt(p.h)}${p.rotated ? ' ↻' : ''}</text>`;
+      }
+      return out + '</svg>';
+    }
+  </script>
+</body>
+</html>
