@@ -72,6 +72,10 @@ Each iteration should be usable end-to-end.
 - Same validation as Optimize (invalid formulas, missing panels, sheet too small for trim) blocks the export.
 - Logo (the favicon) shown next to the page title.
 
+Diagram labels (screen and PDF):
+- Label + dimensions run along the panel's longest edge; on panels taller than wide the text is rotated 90° (reads bottom-to-top).
+- Dimensions always shown in full (font shrinks to fit); labels shortened with "…" so text never spills onto neighbouring panels. Panels too small to read get no text.
+
 ### Backlog (candidates for next iterations, not committed)
 - Grain direction per panel (lock rotation).
 - Cut sequence instructions per sheet.
@@ -92,3 +96,4 @@ Each iteration should be usable end-to-end.
 | 2026-10-12 | Replaced the 8 wood-tone browns with 16 basic named colours — browns were too hard to tell apart. |
 | 2026-10-12 | MVP-4: formulas in numeric fields, replaced by their result on commit (formula not stored). |
 | 2026-10-14 | MVP-5: PDF export generated client-side by a hand-written minimal PDF writer (vector, zero deps) rather than a library or the print dialog. |
+| 2026-10-14 | Diagram text follows the panel's longest edge and is fitted to the panel (fixes labels overlapping neighbours). |

@@ -71,12 +71,16 @@
       this.ops.push(`q ${rgb(color)} RG ${n(lineWidth)} w ${n(x1)} ${n(PAGE_H - y1)} m ${n(x2)} ${n(PAGE_H - y2)} l S Q`);
     }
 
-    // y is the text baseline.
-    text(str, x, y, { size = 10, bold = false, color = '#000000', align = 'left' } = {}) {
+    // (x, y) is the anchor on the text baseline. With vertical: true the text is rotated 90°
+    // counter-clockwise (reads bottom-to-top) and alignment applies along that direction.
+    text(str, x, y, { size = 10, bold = false, color = '#000000', align = 'left', vertical = false } = {}) {
       const w = textWidth(str, size, bold);
-      if (align === 'center') x -= w / 2;
-      else if (align === 'right') x -= w;
-      this.ops.push(`BT /${bold ? 'F2' : 'F1'} ${n(size)} Tf ${rgb(color)} rg ${n(x)} ${n(PAGE_H - y)} Td ${pdfString(str)} Tj ET`);
+      const shift = align === 'center' ? w / 2 : align === 'right' ? w : 0;
+      const font = `/${bold ? 'F2' : 'F1'} ${n(size)} Tf ${rgb(color)} rg`;
+      const position = vertical
+        ? `0 1 -1 0 ${n(x)} ${n(PAGE_H - (y + shift))} Tm`
+        : `${n(x - shift)} ${n(PAGE_H - y)} Td`;
+      this.ops.push(`BT ${font} ${position} ${pdfString(str)} Tj ET`);
     }
 
     // Serialize to bytes. All content is kept as a "binary string" of char codes < 256.
@@ -207,13 +211,20 @@
         const pw = p.w * scale;
         const ph = p.h * scale;
         pdf.rect(px, py, pw, ph, { fill: c.fill, stroke: c.stroke, lineWidth: 0.6 });
+        // Text runs along the panel's longest edge (bottom-to-top on tall panels).
+        const vertical = ph > pw;
+        const along = vertical ? ph : pw;
+        const across = vertical ? pw : ph;
         const dims = `${fmt(p.w)} × ${fmt(p.h)}${p.rotated ? ' (R)' : ''}`;
-        const size = Math.min(9, ph / 2.8, (pw - 6) / (0.85 * textWidth(dims, 1)));
+        const size = Math.min(9, across / 2.8, (along - 6) / (0.85 * textWidth(dims, 1)));
         if (size < 3.5) continue; // too small to label legibly
         const cx = px + pw / 2;
         const cy = py + ph / 2;
-        pdf.text(fit(p.label, pw - 4, size), cx, cy - size * 0.15, { size, color: c.text, align: 'center' });
-        pdf.text(fit(dims, pw - 4, size * 0.85), cx, cy + size * 1.0, { size: size * 0.85, color: c.text, align: 'center' });
+        // Offset of each line's baseline from the centre, perpendicular to the text direction.
+        const line = (offset) => (vertical ? [cx + offset, cy] : [cx, cy + offset]);
+        const opts = { color: c.text, align: 'center', vertical };
+        pdf.text(fit(p.label, along - 4, size), ...line(-size * 0.15), { ...opts, size });
+        pdf.text(fit(dims, along - 4, size * 0.85), ...line(size * 1.0), { ...opts, size: size * 0.85 });
       }
       y += h;
     }

@@ -635,13 +635,35 @@
         out += `<rect x="${t}" y="${t}" width="${L - 2 * t}" height="${W - 2 * t}" fill="#ececec" stroke="#b33" stroke-width="1" stroke-dasharray="8 6"/>`;
       }
       for (const p of s.placements) {
+        out += `<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" fill="${c.fill}" stroke="${c.stroke}" stroke-width="1.5"/>`;
+        // Text runs along the panel's longest edge (bottom-to-top on tall panels). Dimensions are
+        // always shown in full (font shrinks to fit); the label is shortened with "…" if needed.
+        const vertical = p.h > p.w;
+        const along = (vertical ? p.h : p.w) * 0.9;
+        const across = vertical ? p.w : p.h;
+        const dims = `${fmt(p.w)} × ${fmt(p.h)}${p.rotated ? ' ↻' : ''}`;
+        const f = Math.min(font, across / 3, along / (0.85 * textWidth(dims, 1)));
+        if (f < font / 6) continue; // too small to read
+        const label = fitText(p.label, along, f);
         const cx = p.x + p.w / 2, cy = p.y + p.h / 2;
-        const f = Math.min(font, p.w / 6, p.h / 3);
-        out += `<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" fill="${c.fill}" stroke="${c.stroke}" stroke-width="1.5"/>
-          <text x="${cx}" y="${cy - f * 0.2}" font-size="${f}" text-anchor="middle" fill="${c.text}">${esc(p.label)}</text>
-          <text x="${cx}" y="${cy + f * 1.1}" font-size="${f * 0.85}" text-anchor="middle" fill="${c.text}">${fmt(p.w)} × ${fmt(p.h)}${p.rotated ? ' ↻' : ''}</text>`;
+        out += `<g transform="translate(${cx} ${cy})${vertical ? ' rotate(-90)' : ''}" text-anchor="middle" fill="${c.text}">
+          <text y="${-f * 0.2}" font-size="${f}">${esc(label)}</text>
+          <text y="${f * 1.1}" font-size="${f * 0.85}">${esc(dims)}</text></g>`;
       }
       return out + '</svg>';
+    }
+
+    // Text measurement for diagram labels (SVG text uses the page font).
+    const measureCtx = document.createElement('canvas').getContext('2d');
+    function textWidth(text, size) {
+      measureCtx.font = `100px ${getComputedStyle(document.body).fontFamily}`;
+      return measureCtx.measureText(text).width * size / 100;
+    }
+
+    function fitText(text, maxWidth, size) {
+      if (textWidth(text, size) <= maxWidth) return text;
+      while (text && textWidth(text + '…', size) > maxWidth) text = text.slice(0, -1);
+      return text ? text + '…' : '';
     }
   </script>
 </body>
