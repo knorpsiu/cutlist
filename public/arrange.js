@@ -56,8 +56,9 @@
 
   // Best arrangement with panel i moved so its top-left corner is as close as possible to
   // target {x, y}, among arrangements that fit on the trimmed sheet. It only counts as valid if
-  // the panel lands near the target (within half its longer side): dropping a panel where it
-  // can't go must not move it somewhere else instead.
+  // the panel lands near the target (within half its longer side), or if the target spot itself
+  // is free (inside the trim, clear of the other panels): packing then pulls the panel to the
+  // nearest slot. Dropping a panel over others or off the sheet must not move it elsewhere.
   // Returns { placements, valid } — placements in the same order as the input (null if none fit).
   function move({ placements, tree, i, target, material, kerf }) {
     const t = material.trim;
@@ -78,7 +79,16 @@
       const score = distance + 0.05 * shift / Math.max(1, placements.length - 1);
       if (!best || score < best.score) best = { score, distance, placements: out };
     }
-    return { placements: best ? best.placements : null, valid: !!best && best.distance <= reach };
+    return { placements: best ? best.placements : null, valid: !!best && (best.distance <= reach || isFree(placements, i, target, material)) };
+  }
+
+  // Whether panel i placed with its top-left at target would sit on bare sheet.
+  function isFree(placements, i, target, material) {
+    const { w, h } = placements[i];
+    const t = material.trim;
+    const { x, y } = target;
+    if (x < t - EPS || y < t - EPS || x + w > material.length - t + EPS || y + h > material.width - t + EPS) return false;
+    return placements.every((q, j) => j === i || x >= q.x + q.w || q.x >= x + w || y >= q.y + q.h || q.y >= y + h);
   }
 
   global.Arrange = { move, pack, normalize };

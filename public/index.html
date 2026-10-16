@@ -64,6 +64,7 @@
     .cut-list td.n { color: #d1242f; font-weight: 600; white-space: nowrap; }
     .cut-list td.size { font-weight: 600; text-align: right; }
     .cuts-note { font-size: 13px; color: #555; }
+    .tip { font-size: 13px; color: #555; margin: 12px 0 0; }
     .project { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: end; }
     .project input { width: 220px; }
     #projectStatus { font-size: 13px; color: #666; align-self: center; }
@@ -677,6 +678,7 @@
         html += `<p class="warn"><strong>${unassigned.length} panel row(s) have no material</strong> and were skipped:
           ${unassigned.map((p) => esc(p.label || `${fmt(p.length)} × ${fmt(p.width)}`)).join(', ')}</p>`;
       }
+      if (groups.some((g) => g.sheets.length)) html += '<p class="tip">Tip: drag a panel to move it on its sheet; press R while dragging to turn it 90°.</p>';
       if (groups.some((g) => g.sheets.length)) html += `<p class="cuts-note">Cut lists: <strong>Set at</strong> is the width cut off,
         measured from the top edge (rips) or left edge (crosscuts) of the stock as drawn; the kerf falls on the far side.
         Re-squaring the edges (edge trim) comes before cut 1.</p>`;
@@ -727,7 +729,7 @@
         <g class="layout">${sheetLayout(material, s.placements, s.cuts)}</g></svg>`;
     }
 
-    // The sheet drawing. While dragging (drag = { i, valid, ghost: {x, y} }) panel i is outlined
+    // The sheet drawing. While dragging (drag = { i, valid, ghost: {x, y, w, h} }) panel i is outlined
     // at its new place, a ghost follows the pointer (dark grey where the panel can't go) and
     // cut lines are left out.
     function sheetLayout(material, placements, cuts, drag) {
@@ -760,8 +762,8 @@
           <text y="${f * 1.1}" font-size="${f * 0.85}">${esc(dims)}</text></g>`;
       });
       if (!drag) return out + cutsSvg(cuts, font);
-      const p = placements[drag.i];
-      return out + `<rect x="${drag.ghost.x}" y="${drag.ghost.y}" width="${p.w}" height="${p.h}" pointer-events="none"
+      const { x, y, w, h } = drag.ghost;
+      return out + `<rect x="${x}" y="${y}" width="${w}" height="${h}" pointer-events="none"
         fill="${drag.valid ? c.fill : '#4a4a4a'}" fill-opacity="${drag.valid ? 0.75 : 0.9}" stroke="#222" stroke-width="1.5"/>`;
     }
 
@@ -794,9 +796,10 @@
     // Drag a panel to another place on the same sheet; the others re-pack around it (Arrange).
     // A press without movement stays a click, for the measuring tool. Dropping where the panel
     // can't go (dark grey) snaps back; a valid drop updates the cut lines and the cut list.
+    // R while dragging turns the panel 90°.
 
     const DRAG_PX = 4;
-    let arranging = null; // { svg, gi, si, i, start, grab, tree, preview, valid, moved }
+    let arranging = null; // { svg, gi, si, i, start, grab, tree, turned, pointer, preview, valid, moved }
     let suppressClick = false;
 
     results.addEventListener('pointerdown', (e) => {
@@ -810,7 +813,7 @@
       const point = toSvg(svg, e);
       const p = sheet.placements[i];
       arranging = { svg, gi, si, i, start: { x: e.clientX, y: e.clientY }, grab: { x: point.x - p.x, y: point.y - p.y },
-        tree: Cutlist.layoutTree(sheet.placements, material, current.inputs.kerf, current.inputs.algorithm), moved: false };
+        tree: Cutlist.layoutTree(sheet.placements, material, current.inputs.kerf, current.inputs.algorithm), turned: false, moved: false };
       e.preventDefault(); // no text selection while dragging
     });
 
@@ -823,16 +826,38 @@
         document.body.classList.add('arranging');
         drawMeasure(a.svg, null); // hide the corner snap marker
       }
+      a.pointer = { clientX: e.clientX, clientY: e.clientY };
+      updateArranging(a);
+    });
+
+    // Preview the arrangement for the current pointer position (and rotation).
+    function updateArranging(a) {
       const { material, sheets } = current.result.groups[a.gi];
-      const placements = sheets[a.si].placements;
-      const point = toSvg(a.svg, e);
-      const ghost = { x: point.x - a.grab.x, y: point.y - a.grab.y };
+      let placements = sheets[a.si].placements;
+      if (a.turned) {
+        const p = placements[a.i];
+        placements = placements.map((q, j) => (j === a.i ? { ...p, w: p.h, h: p.w, rotated: !p.rotated } : q));
+      }
+      const { w, h } = placements[a.i];
+      const point = toSvg(a.svg, a.pointer);
+      const ghost = { x: point.x - a.grab.x, y: point.y - a.grab.y, w, h };
       const onSheet = point.x >= 0 && point.y >= 0 && point.x <= material.length && point.y <= material.width;
       const r = Arrange.move({ placements, tree: a.tree, i: a.i, target: ghost, material, kerf: current.inputs.kerf });
       a.valid = onSheet && r.valid;
-      a.preview = a.valid ? r.placements : placements;
+      a.preview = a.valid ? r.placements : sheets[a.si].placements;
       a.svg.querySelector('.layout').innerHTML = sheetLayout(material, a.preview, [], { i: a.i, valid: a.valid, ghost });
-    });
+    }
+
+    // Turn the dragged panel 90° clockwise about the pointer.
+    function turnArranging() {
+      const a = arranging;
+      if (!a?.moved) return;
+      const p = current.result.groups[a.gi].sheets[a.si].placements[a.i];
+      const h = a.turned ? p.w : p.h; // height of the ghost before turning
+      a.grab = { x: h - a.grab.y, y: a.grab.x };
+      a.turned = !a.turned;
+      updateArranging(a);
+    }
 
     function endArranging(commit) {
       const a = arranging;
@@ -843,7 +868,8 @@
       setTimeout(() => { suppressClick = false; });
       const { material, sheets } = current.result.groups[a.gi];
       const sheet = sheets[a.si];
-      const changed = commit && a.valid && a.preview.some((p, j) => p.x !== sheet.placements[j].x || p.y !== sheet.placements[j].y);
+      const changed = commit && a.valid
+        && a.preview.some((p, j) => p.x !== sheet.placements[j].x || p.y !== sheet.placements[j].y || p.w !== sheet.placements[j].w);
       if (changed) {
         sheet.placements = a.preview;
         sheet.cuts = Cutlist.sheetCuts(sheet.placements, material, current.inputs.kerf, current.inputs.algorithm);
@@ -855,7 +881,13 @@
     }
     addEventListener('pointerup', () => endArranging(true));
     addEventListener('pointercancel', () => endArranging(false));
-    document.addEventListener('keydown', (e) => e.key === 'Escape' && endArranging(false));
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') endArranging(false);
+      if ((e.key === 'r' || e.key === 'R') && !e.repeat && arranging?.moved) {
+        e.preventDefault();
+        turnArranging();
+      }
+    });
 
     // ---- Measuring tool --------------------------------------------------------------------
     // Click a corner to start; a dotted line follows the mouse (snapping to nearby corners) with

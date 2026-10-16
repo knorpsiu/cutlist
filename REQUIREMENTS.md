@@ -101,18 +101,19 @@ Diagram labels (screen and PDF):
 
 ### MVP-9 — manual arrangement (current)
 - Drag a panel to another place on the same sheet. The other panels re-pack around it: the sheet is kept as a cut tree (strips → pieces → panels) packed toward the top-left with one kerf between neighbours, so every arrangement stays cuttable edge to edge.
-- While dragging, a ghost follows the pointer and a dashed outline shows where the panel will land. The panel goes to the nearest slot where everything still fits; if that slot is more than half the panel's longer side away from the pointer, or the pointer is off the sheet, the ghost turns dark grey and dropping snaps back. Escape cancels.
+- While dragging, a ghost follows the pointer and a dashed outline shows where the panel will land. The panel goes to the nearest slot where everything still fits. The position is valid if that slot is within half the panel's longer side of the ghost, or if the ghost sits entirely on free sheet (inside the trim, clear of other panels); otherwise, or with the pointer off the sheet, the ghost turns dark grey and dropping snaps back. Escape cancels.
+- R while dragging turns the panel 90° about the pointer (press again to turn back). The ↻ mark follows: it shows when the panel lies across its length × width as entered. A tip above the results mentions dragging and R.
 - A press without moving is still a click (measuring tool). Dragging is disabled while a measurement is active.
 - A valid drop updates the cut lines and cut list and labels the sheet "arranged by hand" (also in the PDF).
 - The arrangement is saved with the project, along with a key of the inputs it was made from (kerf, layout, sheet sizes/qty/trim, panels). Opening the project shows it again if the inputs are unchanged. Optimize (or changing the layout type) discards it. Export PDF uses what is on screen if it still matches the form.
-- Not in this step: rotating a panel while dragging, moving panels between sheets.
+- Not in this step: moving panels between sheets.
 
 ### Backlog (candidates for next iterations, not committed)
 - Grain direction per panel (lock rotation) — deprioritized by the user (2026-10-14).
 - Cut list: group equal fence settings across non-consecutive cuts (reorders the sequence).
 - Better optimizer (more heuristics / search, prefer large reusable offcuts).
 - Automated tests (`node --test`) for the optimizer, cut sequence and arrangement.
-- Manual arrangement: rotate a panel while dragging (R key); move panels between sheets.
+- Manual arrangement: move panels between sheets.
 - Export/import a project as a JSON file.
 - Imperial fractions input (e.g. 23 5/8).
 - CSV import of panels.
@@ -136,3 +137,4 @@ Diagram labels (screen and PDF):
 | 2026-10-14 | MVP-8: numbered cut lines derived from the finished layout (stage of full cuts, then recurse with the other direction); trim cuts not numbered; show/hide is a per-browser preference, not project data. |
 | 2026-10-14 | Cut list per sheet: fence setting = width cut off from the near (top/left) edge, kerf on the far side; only consecutive cuts are grouped so the numbering on the diagram stays valid. |
 | 2026-10-16 | MVP-9: manual arrangement by drag-and-drop within a sheet; re-pack in saw order (cut tree) rather than swap or free placement; invalid drop snaps back; saved arrangement shown on open only while the inputs are unchanged. |
+| 2026-10-16 | R rotates the dragged panel. Dropping on free sheet counts as valid even when packing pulls the panel some distance to its slot (grey only over other panels or off the sheet). |
