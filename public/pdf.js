@@ -215,7 +215,7 @@
       const h = W * scale;
       ensure(h + 26);
       y += 16;
-      pdf.text(`Sheet ${index + 1} of ${count} — ${sheet.placements.length} panels`, MARGIN, y, { size: 10, bold: true });
+      pdf.text(`Sheet ${index + 1} of ${count} — ${sheet.placements.length} panels${sheet.manual ? ' (arranged by hand)' : ''}`, MARGIN, y, { size: 10, bold: true });
       y += 6;
       const x0 = MARGIN;
       const y0 = y;

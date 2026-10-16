@@ -53,6 +53,9 @@
     svg { width: 100%; height: auto; display: block; }
     svg[data-corners] { cursor: crosshair; touch-action: none; }
     .measure, .cuts { pointer-events: none; }
+    svg .panel { cursor: grab; }
+    body.arranging, body.arranging * { cursor: grabbing !important; user-select: none; }
+    .sheet h3 .manual { font-weight: 400; color: #b7791f; font-size: 13px; margin-left: 6px; }
     #results.hide-cuts .cuts, #results.hide-cuts .cut-list, #results.hide-cuts .cuts-note { display: none; }
     .cut-list { margin-top: 8px; font-size: 13px; }
     .cut-list th { border-bottom: 1px solid #ccc; }
@@ -117,6 +120,7 @@
 
   <script src="formula.js"></script>
   <script src="optimizer.js"></script>
+  <script src="arrange.js"></script>
   <script src="pdf.js"></script>
   <script>
     const materialsBody = document.getElementById('materials');
@@ -406,6 +410,13 @@
     let dirty = false;
     let loading = false;
 
+    // The results on screen: { result, inputs, key, manual }. key identifies the inputs the result was made
+    // from, so a saved manual arrangement is only reused while those inputs are unchanged.
+    let current = null;
+    const inputsKey = ({ kerf, algorithm, materials, panels }) => JSON.stringify([kerf, algorithm,
+      materials.map(({ id, length, width, qty, trim }) => [id, length, width, qty, trim]),
+      panels.map(({ label, length, width, qty, material }) => [label, length, width, qty, material])]);
+
     function setStatus(text, kind = '') {
       projectStatus.textContent = text;
       projectStatus.className = kind;
@@ -429,7 +440,29 @@
       algorithm: algorithmSelect.value,
       materials: readMaterials(),
       panels: readPanelRows(),
+      ...(current?.manual && { layout: savedLayout() }),
     });
+
+    // A manual arrangement, saved with the inputs it was made from.
+    const savedLayout = () => ({
+      key: current.key,
+      groups: current.result.groups.map((g) => ({
+        material: g.material.id,
+        sheets: g.sheets.map((s) => ({ placements: s.placements, manual: !!s.manual })),
+        unplaced: g.unplaced,
+      })),
+    });
+
+    // Show a saved arrangement if the form still holds the inputs it was made from.
+    function restoreLayout(layout) {
+      if (!layout || document.querySelector('input.num.invalid')) return;
+      const inputs = { kerf: num(document.getElementById('kerf').value), algorithm: algorithmSelect.value, materials: readMaterials(), panels: readPanels() };
+      if (inputsKey(inputs) !== layout.key) return;
+      const result = Cutlist.restore(inputs, layout.groups);
+      if (!result) return;
+      current = { result, inputs, key: layout.key, manual: true };
+      render(result);
+    }
 
     // Replace the whole form with the given project data.
     function fillForm(name, data) {
@@ -442,6 +475,8 @@
       (data.materials || []).forEach(addMaterialRow);
       (data.panels || []).forEach(addPanelRow);
       results.innerHTML = '';
+      current = null;
+      restoreLayout(data.layout);
       loading = false;
       dirty = false;
     }
@@ -600,18 +635,25 @@
       }
       const kerf = num(document.getElementById('kerf').value);
       const algorithm = algorithmSelect.value;
-      return { kerf, algorithm, materials, panels, result: Cutlist.optimize({ kerf, algorithm, materials, panels }) };
+      return { kerf, algorithm, materials, panels };
     }
 
+    // Optimizing replaces any manual arrangement.
     function runOptimize() {
-      const run = optimizeForm();
-      if (run) render(run.result);
+      const inputs = optimizeForm();
+      if (!inputs) return null;
+      if (current?.manual) markDirty();
+      current = { result: Cutlist.optimize(inputs), inputs, key: inputsKey(inputs), manual: false };
+      render(current.result);
+      return inputs;
     }
 
     function exportPdf() {
-      const run = optimizeForm();
-      if (!run) return;
-      render(run.result);
+      let inputs = optimizeForm();
+      if (!inputs) return;
+      // Export what is on screen (possibly rearranged by hand) if it still matches the form.
+      if (current?.key !== inputsKey(inputs)) inputs = runOptimize();
+      const run = { ...inputs, result: current.result };
       const name = projectName.value.trim();
       const bytes = CutlistPdf.buildReport({
         ...run,
@@ -638,12 +680,12 @@
       if (groups.some((g) => g.sheets.length)) html += `<p class="cuts-note">Cut lists: <strong>Set at</strong> is the width cut off,
         measured from the top edge (rips) or left edge (crosscuts) of the stock as drawn; the kerf falls on the far side.
         Re-squaring the edges (edge trim) comes before cut 1.</p>`;
-      for (const g of groups) html += renderGroup(g);
+      groups.forEach((g, gi) => { html += renderGroup(g, gi); });
       results.innerHTML = html;
       measure = null; // any measurement belonged to the old diagrams
     }
 
-    function renderGroup({ material, sheets, unplaced, stats }) {
+    function renderGroup({ material, sheets, unplaced, stats }, gi) {
       let html = `
         <div class="material">
           <h2><span class="swatch" style="background:${material.color}"></span>${esc(materialName(material))} <small>(${fmt(material.length)} × ${fmt(material.width)})</small></h2>
@@ -661,30 +703,48 @@
         html += `<p class="warn"><strong>${unplaced.length} panel(s) did not fit</strong> (too large, or not enough sheets):<br>
           ${Object.entries(counts).map(([k, n]) => `${n} × ${esc(k)}`).join('<br>')}</p>`;
       }
-      sheets.forEach((s, i) => {
-        html += `<div class="sheet"><h3>Sheet ${i + 1} of ${sheets.length} — ${s.placements.length} panels</h3>${sheetSvg(material, s)}${cutListTable(s.cuts)}</div>`;
-      });
+      sheets.forEach((s, si) => { html += sheetBlock(gi, si); });
       return html + '</div>';
+    }
+
+    function sheetBlock(gi, si) {
+      const { material, sheets } = current.result.groups[gi];
+      const s = sheets[si];
+      return `<div class="sheet" data-g="${gi}" data-s="${si}"><h3>Sheet ${si + 1} of ${sheets.length} — ${s.placements.length} panels${
+        s.manual ? '<span class="manual">arranged by hand</span>' : ''}</h3>${sheetSvg(material, s)}${cutListTable(s.cuts)}</div>`;
     }
 
     function sheetSvg(material, s) {
       const { length: L, width: W, trim: t } = material;
-      const font = Math.max(L, W) / 60;
-      const c = colorOf(material.color);
       // Snap targets for the measuring tool: sheet, trim and panel corners.
       const corners = new Set();
       const addCorners = (x, y, w, h) => [[x, y], [x + w, y], [x, y + h], [x + w, y + h]].forEach(([cx, cy]) => corners.add(`${cx},${cy}`));
       addCorners(0, 0, L, W);
       if (t > 0) addCorners(t, t, L - 2 * t, W - 2 * t);
       for (const p of s.placements) addCorners(p.x, p.y, p.w, p.h);
-      let out = `<svg viewBox="-2 -2 ${L + 4} ${W + 4}" xmlns="http://www.w3.org/2000/svg"
+      return `<svg viewBox="-2 -2 ${L + 4} ${W + 4}" xmlns="http://www.w3.org/2000/svg"
         data-corners="${[...corners].join(';')}" data-length="${L}" data-width="${W}">
-        <rect x="0" y="0" width="${L}" height="${W}" fill="#d9d9d9" stroke="#555" stroke-width="2"/>`;
+        <g class="layout">${sheetLayout(material, s.placements, s.cuts)}</g></svg>`;
+    }
+
+    // The sheet drawing. While dragging (drag = { i, valid, ghost: {x, y} }) panel i is outlined
+    // at its new place, a ghost follows the pointer (dark grey where the panel can't go) and
+    // cut lines are left out.
+    function sheetLayout(material, placements, cuts, drag) {
+      const { length: L, width: W, trim: t } = material;
+      const font = Math.max(L, W) / 60;
+      const c = colorOf(material.color);
+      let out = `<rect x="0" y="0" width="${L}" height="${W}" fill="#d9d9d9" stroke="#555" stroke-width="2"/>`;
       if (t > 0) {
         out += `<rect x="${t}" y="${t}" width="${L - 2 * t}" height="${W - 2 * t}" fill="#ececec" stroke="#b33" stroke-width="1" stroke-dasharray="8 6"/>`;
       }
-      for (const p of s.placements) {
-        out += `<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" fill="${c.fill}" stroke="${c.stroke}" stroke-width="1.5"/>`;
+      placements.forEach((p, i) => {
+        const moving = drag && i === drag.i;
+        out += moving
+          ? `<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" fill="${drag.valid ? c.fill : 'none'}" fill-opacity="0.45"
+              stroke="#222" stroke-width="2" stroke-dasharray="6 4" vector-effect="non-scaling-stroke"/>`
+          : `<rect class="panel" data-i="${i}" x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" fill="${c.fill}" stroke="${c.stroke}" stroke-width="1.5"/>`;
+        if (moving) return;
         // Text runs along the panel's longest edge (bottom-to-top on tall panels). Dimensions are
         // always shown in full (font shrinks to fit); the label is shortened with "…" if needed.
         const vertical = p.h > p.w;
@@ -692,14 +752,17 @@
         const across = vertical ? p.w : p.h;
         const dims = `${fmt(p.w)} × ${fmt(p.h)}${p.rotated ? ' ↻' : ''}`;
         const f = Math.min(font, across / 3, along / (0.85 * textWidth(dims, 1)));
-        if (f < font / 6) continue; // too small to read
+        if (f < font / 6) return; // too small to read
         const label = fitText(p.label, along, f);
         const cx = p.x + p.w / 2, cy = p.y + p.h / 2;
-        out += `<g transform="translate(${cx} ${cy})${vertical ? ' rotate(-90)' : ''}" text-anchor="middle" fill="${c.text}">
+        out += `<g transform="translate(${cx} ${cy})${vertical ? ' rotate(-90)' : ''}" text-anchor="middle" fill="${c.text}" pointer-events="none">
           <text y="${-f * 0.2}" font-size="${f}">${esc(label)}</text>
           <text y="${f * 1.1}" font-size="${f * 0.85}">${esc(dims)}</text></g>`;
-      }
-      return out + cutsSvg(s.cuts, font) + '</svg>';
+      });
+      if (!drag) return out + cutsSvg(cuts, font);
+      const p = placements[drag.i];
+      return out + `<rect x="${drag.ghost.x}" y="${drag.ghost.y}" width="${p.w}" height="${p.h}" pointer-events="none"
+        fill="${drag.valid ? c.fill : '#4a4a4a'}" fill-opacity="${drag.valid ? 0.75 : 0.9}" stroke="#222" stroke-width="1.5"/>`;
     }
 
     function cutListTable(cuts = []) {
@@ -726,6 +789,73 @@
       return `<g class="cuts"><g stroke="#d1242f" stroke-width="2">${lines}</g>
         <g fill="#fff" stroke="#d1242f" stroke-width="1.5" text-anchor="middle" font-weight="600">${badges}</g></g>`;
     }
+
+    // ---- Manual arrangement ----------------------------------------------------------------
+    // Drag a panel to another place on the same sheet; the others re-pack around it (Arrange).
+    // A press without movement stays a click, for the measuring tool. Dropping where the panel
+    // can't go (dark grey) snaps back; a valid drop updates the cut lines and the cut list.
+
+    const DRAG_PX = 4;
+    let arranging = null; // { svg, gi, si, i, start, grab, tree, preview, valid, moved }
+    let suppressClick = false;
+
+    results.addEventListener('pointerdown', (e) => {
+      const rect = e.target.closest('rect.panel');
+      if (!rect || e.button !== 0 || measure) return;
+      const block = rect.closest('.sheet');
+      const gi = +block.dataset.g, si = +block.dataset.s, i = +rect.dataset.i;
+      const { material } = current.result.groups[gi];
+      const sheet = current.result.groups[gi].sheets[si];
+      const svg = rect.ownerSVGElement;
+      const point = toSvg(svg, e);
+      const p = sheet.placements[i];
+      arranging = { svg, gi, si, i, start: { x: e.clientX, y: e.clientY }, grab: { x: point.x - p.x, y: point.y - p.y },
+        tree: Cutlist.layoutTree(sheet.placements, material, current.inputs.kerf, current.inputs.algorithm), moved: false };
+      e.preventDefault(); // no text selection while dragging
+    });
+
+    addEventListener('pointermove', (e) => {
+      const a = arranging;
+      if (!a) return;
+      if (!a.moved && Math.hypot(e.clientX - a.start.x, e.clientY - a.start.y) < DRAG_PX) return;
+      if (!a.moved) {
+        a.moved = true;
+        document.body.classList.add('arranging');
+        drawMeasure(a.svg, null); // hide the corner snap marker
+      }
+      const { material, sheets } = current.result.groups[a.gi];
+      const placements = sheets[a.si].placements;
+      const point = toSvg(a.svg, e);
+      const ghost = { x: point.x - a.grab.x, y: point.y - a.grab.y };
+      const onSheet = point.x >= 0 && point.y >= 0 && point.x <= material.length && point.y <= material.width;
+      const r = Arrange.move({ placements, tree: a.tree, i: a.i, target: ghost, material, kerf: current.inputs.kerf });
+      a.valid = onSheet && r.valid;
+      a.preview = a.valid ? r.placements : placements;
+      a.svg.querySelector('.layout').innerHTML = sheetLayout(material, a.preview, [], { i: a.i, valid: a.valid, ghost });
+    });
+
+    function endArranging(commit) {
+      const a = arranging;
+      arranging = null;
+      if (!a?.moved) return;
+      document.body.classList.remove('arranging');
+      suppressClick = true; // the click that ends a drag must not start a measurement
+      setTimeout(() => { suppressClick = false; });
+      const { material, sheets } = current.result.groups[a.gi];
+      const sheet = sheets[a.si];
+      const changed = commit && a.valid && a.preview.some((p, j) => p.x !== sheet.placements[j].x || p.y !== sheet.placements[j].y);
+      if (changed) {
+        sheet.placements = a.preview;
+        sheet.cuts = Cutlist.sheetCuts(sheet.placements, material, current.inputs.kerf, current.inputs.algorithm);
+        sheet.manual = true;
+        current.manual = true;
+        markDirty();
+      }
+      a.svg.closest('.sheet').outerHTML = sheetBlock(a.gi, a.si);
+    }
+    addEventListener('pointerup', () => endArranging(true));
+    addEventListener('pointercancel', () => endArranging(false));
+    document.addEventListener('keydown', (e) => e.key === 'Escape' && endArranging(false));
 
     // ---- Measuring tool --------------------------------------------------------------------
     // Click a corner to start; a dotted line follows the mouse (snapping to nearby corners) with
@@ -837,6 +967,7 @@
     }
 
     results.addEventListener('pointermove', (e) => {
+      if (arranging?.moved) return;
       const svg = e.target.closest('svg[data-corners]');
       if (hoverSvg && hoverSvg !== svg) drawMeasure(hoverSvg, null);
       hoverSvg = svg;
@@ -849,6 +980,7 @@
       lastPointer = null;
     });
     results.addEventListener('click', (e) => {
+      if (suppressClick) return;
       if (measure) return clearMeasure();
       const svg = e.target.closest('svg[data-corners]');
       const corner = svg && nearestCorner(svg, toSvg(svg, e));

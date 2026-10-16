@@ -91,7 +91,7 @@ Diagram labels (screen and PDF):
 - **Best fit (mixed cuts)** — the original free guillotine packing: may use fewer sheets, but mixes cut directions and needs more setups.
 - Projects saved before this feature open with Rip first.
 
-### MVP-8 — cut lines and cut list (current)
+### MVP-8 — cut lines and cut list ✅
 - Every diagram shows its cuts as red lines, numbered in saw order (screen and PDF). A "Show cuts" checkbox next to Export PDF hides them (remembered per browser, also applies to the PDF).
 - Order: one stage of edge-to-edge cuts across the piece (e.g. all rips of the sheet), then each resulting piece in turn with the other direction. Rip first starts with rips, crosscut first with crosscuts.
 - Cuts start inside the edge trim: re-squaring the sheet is not numbered (the trim is already shown dashed).
@@ -99,11 +99,20 @@ Diagram labels (screen and PDF):
 - Cut list per sheet under each diagram (screen and PDF): Cut | Operation | Set at | Cut from | Gives. "Set at" is the width cut off, measured from the top (rips) or left (crosscuts) edge of the stock as drawn, kerf on the far side. "Gives" names the panel, or the strip/piece and its panel count, plus what remains after a stage's last cut.
 - Consecutive identical cuts are grouped ("3–5, Crosscut ×3, 764"): within one stage, or the same cut on identical stock (twin strips, "rest … each"). Hidden together with the cut lines by "Show cuts".
 
+### MVP-9 — manual arrangement (current)
+- Drag a panel to another place on the same sheet. The other panels re-pack around it: the sheet is kept as a cut tree (strips → pieces → panels) packed toward the top-left with one kerf between neighbours, so every arrangement stays cuttable edge to edge.
+- While dragging, a ghost follows the pointer and a dashed outline shows where the panel will land. The panel goes to the nearest slot where everything still fits; if that slot is more than half the panel's longer side away from the pointer, or the pointer is off the sheet, the ghost turns dark grey and dropping snaps back. Escape cancels.
+- A press without moving is still a click (measuring tool). Dragging is disabled while a measurement is active.
+- A valid drop updates the cut lines and cut list and labels the sheet "arranged by hand" (also in the PDF).
+- The arrangement is saved with the project, along with a key of the inputs it was made from (kerf, layout, sheet sizes/qty/trim, panels). Opening the project shows it again if the inputs are unchanged. Optimize (or changing the layout type) discards it. Export PDF uses what is on screen if it still matches the form.
+- Not in this step: rotating a panel while dragging, moving panels between sheets.
+
 ### Backlog (candidates for next iterations, not committed)
 - Grain direction per panel (lock rotation) — deprioritized by the user (2026-10-14).
 - Cut list: group equal fence settings across non-consecutive cuts (reorders the sequence).
 - Better optimizer (more heuristics / search, prefer large reusable offcuts).
-- Automated tests (`node --test`) for the optimizer and cut sequence.
+- Automated tests (`node --test`) for the optimizer, cut sequence and arrangement.
+- Manual arrangement: rotate a panel while dragging (R key); move panels between sheets.
 - Export/import a project as a JSON file.
 - Imperial fractions input (e.g. 23 5/8).
 - CSV import of panels.
@@ -126,3 +135,4 @@ Diagram labels (screen and PDF):
 | 2026-10-14 | MVP-7: selectable layout algorithms; strip-based (3-stage) Rip first is the default because cuts must suit a track saw and table saw. |
 | 2026-10-14 | MVP-8: numbered cut lines derived from the finished layout (stage of full cuts, then recurse with the other direction); trim cuts not numbered; show/hide is a per-browser preference, not project data. |
 | 2026-10-14 | Cut list per sheet: fence setting = width cut off from the near (top/left) edge, kerf on the far side; only consecutive cuts are grouped so the numbering on the diagram stays valid. |
+| 2026-10-16 | MVP-9: manual arrangement by drag-and-drop within a sheet; re-pack in saw order (cut tree) rather than swap or free placement; invalid drop snaps back; saved arrangement shown on open only while the inputs are unchanged. |

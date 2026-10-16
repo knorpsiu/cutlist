@@ -357,18 +357,23 @@
       }
     }
 
-    // Strip layouts start with full-length rips, except crosscut first (full-width cuts).
-    const firstDir = input.algorithm === 'crosscut' ? 'v' : 'h';
-    for (const s of best.sheets) s.cuts = cutSequence(s.placements, input.sheet, input.trim, input.kerf, firstDir);
+    return finish(best, input);
+  }
 
-    const usedArea = best.sheets.reduce((sum, s) => sum + s.placements.reduce((a, p) => a + p.w * p.h, 0), 0);
+  // Strip layouts start with full-length rips, except crosscut first (full-width cuts).
+  const firstDir = (algorithm) => (algorithm === 'crosscut' ? 'v' : 'h');
+
+  // Add the cut sequence to each sheet and the stats to the result.
+  function finish(result, input) {
+    for (const s of result.sheets) s.cuts = cutSequence(s.placements, input.sheet, input.trim, input.kerf, firstDir(input.algorithm));
+    const usedArea = result.sheets.reduce((sum, s) => sum + s.placements.reduce((a, p) => a + p.w * p.h, 0), 0);
     const sheetArea = input.sheet.length * input.sheet.width;
     return {
-      ...best,
+      ...result,
       stats: {
-        sheetsUsed: best.sheets.length,
-        partsPlaced: best.sheets.reduce((n, s) => n + s.placements.length, 0),
-        yield: best.sheets.length ? usedArea / (best.sheets.length * sheetArea) : 0,
+        sheetsUsed: result.sheets.length,
+        partsPlaced: result.sheets.reduce((n, s) => n + s.placements.length, 0),
+        yield: result.sheets.length ? usedArea / (result.sheets.length * sheetArea) : 0,
       },
     };
   }
@@ -396,12 +401,60 @@
     return { groups, unassigned };
   }
 
+  // Rebuild a result like optimize() returns from saved sheets (e.g. a manual arrangement):
+  // saved = [{ material: id, sheets: [{ placements, manual }], unplaced }]. Null if a material is gone.
+  function restore(input, saved) {
+    const byId = new Map(input.materials.map((m) => [m.id, m]));
+    if (saved.some((g) => !byId.has(g.material))) return null;
+    const groups = saved.map((g) => {
+      const material = byId.get(g.material);
+      const sheetInput = { sheet: material, kerf: input.kerf, trim: material.trim, algorithm: input.algorithm };
+      const result = { sheets: g.sheets.map(({ placements, manual }) => ({ placements, manual })), unplaced: g.unplaced || [] };
+      return { material, ...finish(result, sheetInput) };
+    });
+    const unassigned = input.panels.filter((p) => !byId.has(p.material));
+    return { groups, unassigned };
+  }
+
+  // Cut sequence for one sheet of a material, e.g. after a manual rearrangement.
+  function sheetCuts(placements, material, kerf, algorithm) {
+    return cutSequence(placements, material, material.trim, kerf, firstDir(algorithm));
+  }
+
+  // The layout as a cut tree, for rearranging: { stack: 'x'|'y', children } nodes (children laid
+  // side by side along x, or stacked along y, separated by cuts) and { i } leaves, where i indexes
+  // placements. Offcuts are dropped, so packing the tree back closes up gaps.
+  function layoutTree(placements, material, kerf, algorithm) {
+    const index = new Map(placements.map((p, i) => [p, i]));
+    function build(r, parts, dir) {
+      if (parts.length === 1) return { i: index.get(parts[0]) };
+      let stage = stageCuts(r, parts, dir, kerf);
+      if (!stage.length) {
+        dir = dir === 'h' ? 'v' : 'h';
+        stage = stageCuts(r, parts, dir, kerf);
+      }
+      if (!stage.length) throw new Error('Layout is not guillotine-cuttable');
+      const [pos, size] = dir === 'h' ? ['y', 'h'] : ['x', 'w'];
+      const bounds = [r[pos], ...stage.flatMap((c) => [c.lo, c.hi]), r[pos] + r[size]];
+      const children = [];
+      for (let i = 0; i < bounds.length; i += 2) {
+        const [lo, hi] = [bounds[i], bounds[i + 1]];
+        const inside = parts.filter((p) => p[pos] >= lo - EPS && p[pos] + p[size] <= hi + EPS);
+        if (inside.length) children.push(build({ ...r, [pos]: lo, [size]: hi - lo }, inside, dir === 'h' ? 'v' : 'h'));
+      }
+      return children.length === 1 ? children[0] : { stack: dir === 'h' ? 'y' : 'x', children };
+    }
+    if (!placements.length) return null;
+    const t = material.trim;
+    return build({ x: t, y: t, w: material.length - 2 * t, h: material.width - 2 * t }, placements, firstDir(algorithm));
+  }
+
   const ALGORITHMS = {
     rip: 'Rip first (full-length strips)',
     crosscut: 'Crosscut first (full-width strips)',
     guillotine: 'Best fit (mixed cuts)',
   };
 
-  global.Cutlist = { optimize, optimizeSheet, cutList, ALGORITHMS };
-  if (typeof module !== 'undefined') module.exports = { optimize, optimizeSheet, cutList, ALGORITHMS };
+  global.Cutlist = { optimize, optimizeSheet, cutList, restore, sheetCuts, layoutTree, ALGORITHMS };
+  if (typeof module !== 'undefined') module.exports = { optimize, optimizeSheet, cutList, restore, sheetCuts, layoutTree, ALGORITHMS };
 })(typeof window !== 'undefined' ? window : globalThis);
