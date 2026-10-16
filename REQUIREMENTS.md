@@ -82,7 +82,7 @@ Diagram labels (screen and PDF):
 - Clicking a corner starts a measurement: a dotted line from that corner follows the mouse; its end snaps to nearby corners (exact corner-to-corner values), otherwise follows the mouse freely.
 - Label next to the cursor: straight-line distance plus horizontal/vertical components, e.g. `947.26 (Δx 560, Δy 764)`; flips to stay inside the sheet.
 - Only one active measurement: the next click anywhere (or Escape) clears it. A click away from a corner does not start one.
-- Holding Shift constrains the line to horizontal or vertical (whichever direction the mouse is further along); releasing it returns to free measuring. Takes effect immediately on key press/release. With Shift, a nearby corner still snaps: the line ends level with that corner, and a faint red guide links the corner to the line's end.
+- Holding Shift constrains the line to horizontal or vertical (whichever direction the mouse is further along); releasing it returns to free measuring. Takes effect immediately on key press/release. With Shift, a nearby corner still snaps: the line ends level with that corner, and a faint red guide links the corner to the line's end. The line's end also snaps to an edge trim line it crosses (left/right trim when horizontal, top/bottom when vertical), marked with the snap ring.
 
 ### MVP-7 — layout algorithms ✅
 - "Layout" dropdown next to Optimize, saved with the project; changing it re-runs Optimize when results are shown. The PDF header names the layout used.
@@ -138,3 +138,4 @@ Diagram labels (screen and PDF):
 | 2026-10-14 | Cut list per sheet: fence setting = width cut off from the near (top/left) edge, kerf on the far side; only consecutive cuts are grouped so the numbering on the diagram stays valid. |
 | 2026-10-16 | MVP-9: manual arrangement by drag-and-drop within a sheet; re-pack in saw order (cut tree) rather than swap or free placement; invalid drop snaps back; saved arrangement shown on open only while the inputs are unchanged. |
 | 2026-10-16 | R rotates the dragged panel. Dropping on free sheet counts as valid even when packing pulls the panel some distance to its slot (grey only over other panels or off the sheet). |
+| 2026-10-16 | Shift-measuring also snaps the line's end to the edge trim lines it crosses (same 10 px reach as corners; the closer of a corner and a trim line wins). |

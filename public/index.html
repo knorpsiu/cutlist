@@ -725,7 +725,7 @@
       if (t > 0) addCorners(t, t, L - 2 * t, W - 2 * t);
       for (const p of s.placements) addCorners(p.x, p.y, p.w, p.h);
       return `<svg viewBox="-2 -2 ${L + 4} ${W + 4}" xmlns="http://www.w3.org/2000/svg"
-        data-corners="${[...corners].join(';')}" data-length="${L}" data-width="${W}">
+        data-corners="${[...corners].join(';')}" data-length="${L}" data-width="${W}" data-trim="${t}">
         <g class="layout">${sheetLayout(material, s.placements, s.cuts)}</g></svg>`;
     }
 
@@ -891,8 +891,8 @@
 
     // ---- Measuring tool --------------------------------------------------------------------
     // Click a corner to start; a dotted line follows the mouse (snapping to nearby corners) with
-    // a distance label. Holding Shift keeps the line horizontal or vertical. The next click, or
-    // Escape, clears it.
+    // a distance label. Holding Shift keeps the line horizontal or vertical, and its end also snaps
+    // to the edge trim lines it crosses. The next click, or Escape, clears it.
 
     const SNAP_PX = 10;
     const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -924,6 +924,17 @@
       return best;
     }
 
+    // The edge trim line (x = t or L - t when horizontal, y = t or W - t when vertical) within snapping
+    // distance of the pointer, or null.
+    function trimSnap(svg, p, horizontal) {
+      const t = Number(svg.dataset.trim);
+      if (!(t > 0)) return null;
+      const [pos, size] = horizontal ? [p.x, Number(svg.dataset.length)] : [p.y, Number(svg.dataset.width)];
+      const reach = SNAP_PX / pxPerUnit(svg);
+      const lines = [t, size - t].filter((v) => Math.abs(v - pos) <= reach);
+      return lines.length ? lines.sort((a, b) => Math.abs(a - pos) - Math.abs(b - pos))[0] : null;
+    }
+
     function overlay(svg) {
       let g = svg.querySelector('.measure');
       if (!g) {
@@ -943,7 +954,7 @@
     function drawMeasure(svg, pointer, ortho = false) {
       const g = overlay(svg);
       const u = 1 / pxPerUnit(svg); // one screen pixel in diagram units
-      const snap = pointer && nearestCorner(svg, pointer);
+      let snap = pointer && nearestCorner(svg, pointer);
       const [line, startDot, snapRing, bg, text, guide] = g.children;
       show(guide, false);
 
@@ -963,6 +974,15 @@
       if (ortho) {
         const horizontal = Math.abs(pointer.x - start.x) >= Math.abs(pointer.y - start.y);
         end = horizontal ? { x: end.x, y: start.y } : { x: start.x, y: end.y };
+        // Snap to an edge trim line across the line's direction, if closer than any snapped corner.
+        const trimAt = trimSnap(svg, pointer, horizontal);
+        const axis = horizontal ? 'x' : 'y';
+        if (trimAt !== null && (!snap || Math.abs(trimAt - pointer[axis]) < Math.abs(snap[axis] - pointer[axis]))) {
+          end = { ...end, [axis]: trimAt };
+          snap = null;
+          attrs(snapRing, { cx: end.x, cy: end.y, r: 6 * u, fill: 'none', stroke: '#c53030', 'stroke-width': 2 * u });
+          show(snapRing, true);
+        }
         // Faint guide from the snapped corner to the line's end, showing which corner sets the distance.
         if (snap && (snap.x !== end.x || snap.y !== end.y)) {
           show(guide, true);
