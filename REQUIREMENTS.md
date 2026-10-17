@@ -147,3 +147,4 @@ Diagram labels (screen and PDF):
 | 2026-10-17 | Measuring also snaps to cut-line junctions (ends of each cut and panel edges meeting it), only while cuts are shown. Points beside a kerf move onto the crossing cut's centre line so each junction is one point. |
 | 2026-10-17 | "How to use" instructions under the page description (collapsible, open by default; closing it is remembered per browser). Keep them in step with new features. |
 | 2026-10-17 | Confirm before re-optimizing over a manual arrangement (native `confirm()`, like the unsaved-changes prompt). Parked panels get a warning sign on screen; the PDF already lists them in red. |
+| 2026-10-17 | Open source under the MIT License. README.md for GitHub, with screenshots in `docs/` captured from the built-in example project. |

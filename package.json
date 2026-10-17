@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Sheet goods cut optimizer for furniture makers",
+  "license": "MIT",
   "scripts": {
     "start": "node --disable-warning=ExperimentalWarning server.js",
     "dev": "node --disable-warning=ExperimentalWarning --watch server.js",
