@@ -65,7 +65,7 @@
     const maxW = material.length - 2 * t + EPS;
     const maxH = material.width - 2 * t + EPS;
     const reach = Math.max(placements[i].w, placements[i].h) / 2;
-    const rest = normalize(without(tree, i));
+    const rest = tree && normalize(without(tree, i)); // tree may not hold i (a parked panel)
     const trees = rest ? insertions(rest, { i }) : [{ i }];
     let best = null;
     for (const candidate of trees) {

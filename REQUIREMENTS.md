@@ -106,7 +106,9 @@ Diagram labels (screen and PDF):
 - A press without moving is still a click (measuring tool). Dragging is disabled while a measurement is active.
 - A valid drop updates the cut lines and cut list and labels the sheet "arranged by hand" (also in the PDF).
 - The arrangement is saved with the project, along with a key of the inputs it was made from (kerf, layout, sheet sizes/qty/trim, panels). Opening the project shows it again if the inputs are unchanged. Optimize (or changing the layout type) discards it. Export PDF uses what is on screen if it still matches the form.
-- Not in this step: moving panels between sheets.
+- P while dragging parks the panel (as currently turned) in a strip under its sheet, so the rest can be rearranged with it out of the way. Any number of panels can be parked per sheet; they sit in rows at the diagram's scale. The other panels stay where they are (the next drag closes the gap). Parked panels are not in the cut lines, the cut list or the counts/yield; the sheet heading shows "N parked, not in the cut list", and the PDF lists them under the sheet.
+- A parked panel is dragged back onto the sheet like any other (R works too); an invalid drop leaves it parked. Parked panels are saved with the arrangement; Optimize clears them.
+- Not in this step: moving panels between sheets (a per-material parking strip could carry panels across later).
 
 ### Backlog (candidates for next iterations, not committed)
 - Grain direction per panel (lock rotation) — deprioritized by the user (2026-10-14).
@@ -139,4 +141,5 @@ Diagram labels (screen and PDF):
 | 2026-10-16 | MVP-9: manual arrangement by drag-and-drop within a sheet; re-pack in saw order (cut tree) rather than swap or free placement; invalid drop snaps back; saved arrangement shown on open only while the inputs are unchanged. |
 | 2026-10-16 | R rotates the dragged panel. Dropping on free sheet counts as valid even when packing pulls the panel some distance to its slot (grey only over other panels or off the sheet). |
 | 2026-10-16 | Shift-measuring also snaps the line's end to the edge trim lines it crosses (same 10 px reach as corners; the closer of a corner and a trim line wins). |
+| 2026-10-17 | Parking (P while dragging): a strip per sheet holding any number of panels taken out of the layout, so others can be rearranged first. Chosen over leaving an overlapping panel on the sheet, which the cut-tree model can't represent. Parking leaves the other panels in place. |
 | 2026-10-17 | Measuring also snaps to cut-line junctions (ends of each cut and panel edges meeting it), only while cuts are shown. Points beside a kerf move onto the crossing cut's centre line so each junction is one point. |

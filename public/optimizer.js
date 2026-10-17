@@ -366,15 +366,17 @@
   // Add the cut sequence to each sheet and the stats to the result.
   function finish(result, input) {
     for (const s of result.sheets) s.cuts = cutSequence(s.placements, input.sheet, input.trim, input.kerf, firstDir(input.algorithm));
-    const usedArea = result.sheets.reduce((sum, s) => sum + s.placements.reduce((a, p) => a + p.w * p.h, 0), 0);
-    const sheetArea = input.sheet.length * input.sheet.width;
+    return { ...result, stats: stats(result.sheets, input.sheet) };
+  }
+
+  // Counts and yield for the sheets of one material (parked panels aren't on a sheet, so they
+  // don't count).
+  function stats(sheets, sheet) {
+    const usedArea = sheets.reduce((sum, s) => sum + s.placements.reduce((a, p) => a + p.w * p.h, 0), 0);
     return {
-      ...result,
-      stats: {
-        sheetsUsed: result.sheets.length,
-        partsPlaced: result.sheets.reduce((n, s) => n + s.placements.length, 0),
-        yield: result.sheets.length ? usedArea / (result.sheets.length * sheetArea) : 0,
-      },
+      sheetsUsed: sheets.length,
+      partsPlaced: sheets.reduce((n, s) => n + s.placements.length, 0),
+      yield: sheets.length ? usedArea / (sheets.length * sheet.length * sheet.width) : 0,
     };
   }
 
@@ -402,14 +404,14 @@
   }
 
   // Rebuild a result like optimize() returns from saved sheets (e.g. a manual arrangement):
-  // saved = [{ material: id, sheets: [{ placements, manual }], unplaced }]. Null if a material is gone.
+  // saved = [{ material: id, sheets: [{ placements, manual, parked }], unplaced }]. Null if a material is gone.
   function restore(input, saved) {
     const byId = new Map(input.materials.map((m) => [m.id, m]));
     if (saved.some((g) => !byId.has(g.material))) return null;
     const groups = saved.map((g) => {
       const material = byId.get(g.material);
       const sheetInput = { sheet: material, kerf: input.kerf, trim: material.trim, algorithm: input.algorithm };
-      const result = { sheets: g.sheets.map(({ placements, manual }) => ({ placements, manual })), unplaced: g.unplaced || [] };
+      const result = { sheets: g.sheets.map(({ placements, manual, parked = [] }) => ({ placements, manual, parked })), unplaced: g.unplaced || [] };
       return { material, ...finish(result, sheetInput) };
     });
     const unassigned = input.panels.filter((p) => !byId.has(p.material));
@@ -455,6 +457,6 @@
     guillotine: 'Best fit (mixed cuts)',
   };
 
-  global.Cutlist = { optimize, optimizeSheet, cutList, restore, sheetCuts, layoutTree, ALGORITHMS };
-  if (typeof module !== 'undefined') module.exports = { optimize, optimizeSheet, cutList, restore, sheetCuts, layoutTree, ALGORITHMS };
+  global.Cutlist = { optimize, optimizeSheet, cutList, restore, sheetCuts, layoutTree, stats, ALGORITHMS };
+  if (typeof module !== 'undefined') module.exports = { optimize, optimizeSheet, cutList, restore, sheetCuts, layoutTree, stats, ALGORITHMS };
 })(typeof window !== 'undefined' ? window : globalThis);

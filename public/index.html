@@ -56,6 +56,7 @@
     svg .panel { cursor: grab; }
     body.arranging, body.arranging * { cursor: grabbing !important; user-select: none; }
     .sheet h3 .manual { font-weight: 400; color: #b7791f; font-size: 13px; margin-left: 6px; }
+    .sheet h3 .parked { font-weight: 600; color: #c53030; font-size: 13px; margin-left: 6px; }
     #results.hide-cuts .cuts, #results.hide-cuts .cut-list, #results.hide-cuts .cuts-note { display: none; }
     .cut-list { margin-top: 8px; font-size: 13px; }
     .cut-list th { border-bottom: 1px solid #ccc; }
@@ -449,7 +450,7 @@
       key: current.key,
       groups: current.result.groups.map((g) => ({
         material: g.material.id,
-        sheets: g.sheets.map((s) => ({ placements: s.placements, manual: !!s.manual })),
+        sheets: g.sheets.map((s) => ({ placements: s.placements, manual: !!s.manual, parked: s.parked ?? [] })),
         unplaced: g.unplaced,
       })),
     });
@@ -678,7 +679,7 @@
         html += `<p class="warn"><strong>${unassigned.length} panel row(s) have no material</strong> and were skipped:
           ${unassigned.map((p) => esc(p.label || `${fmt(p.length)} × ${fmt(p.width)}`)).join(', ')}</p>`;
       }
-      if (groups.some((g) => g.sheets.length)) html += '<p class="tip">Tip: drag a panel to move it on its sheet; press R while dragging to turn it 90°.</p>';
+      if (groups.some((g) => g.sheets.length)) html += '<p class="tip">Tip: drag a panel to move it on its sheet; press R while dragging to turn it 90°, or P to park it beside the sheet.</p>';
       if (groups.some((g) => g.sheets.length)) html += `<p class="cuts-note">Cut lists: <strong>Set at</strong> is the width cut off,
         measured from the top edge (rips) or left edge (crosscuts) of the stock as drawn; the kerf falls on the far side.
         Re-squaring the edges (edge trim) comes before cut 1.</p>`;
@@ -712,8 +713,10 @@
     function sheetBlock(gi, si) {
       const { material, sheets } = current.result.groups[gi];
       const s = sheets[si];
+      const parked = s.parked?.length;
       return `<div class="sheet" data-g="${gi}" data-s="${si}"><h3>Sheet ${si + 1} of ${sheets.length} — ${s.placements.length} panels${
-        s.manual ? '<span class="manual">arranged by hand</span>' : ''}</h3>${sheetSvg(material, s)}${cutListTable(s.cuts)}</div>`;
+        s.manual ? '<span class="manual">arranged by hand</span>' : ''}${
+        parked ? `<span class="parked">${parked} parked, not in the cut list</span>` : ''}</h3>${sheetSvg(material, s)}${cutListTable(s.cuts)}</div>`;
     }
 
     function sheetSvg(material, s) {
@@ -724,10 +727,33 @@
       addCorners(0, 0, L, W);
       if (t > 0) addCorners(t, t, L - 2 * t, W - 2 * t);
       for (const p of s.placements) addCorners(p.x, p.y, p.w, p.h);
-      return `<svg viewBox="-2 -2 ${L + 4} ${W + 4}" xmlns="http://www.w3.org/2000/svg"
+      const H = W + parkingStrip(material, s.parked).height;
+      return `<svg viewBox="-2 -2 ${L + 4} ${H + 4}" xmlns="http://www.w3.org/2000/svg"
         data-corners="${[...corners].join(';')}" data-cut-points="${cutPoints(s).join(';')}"
         data-length="${L}" data-width="${W}" data-trim="${t}">
-        <g class="layout">${sheetLayout(material, s.placements, s.cuts)}</g></svg>`;
+        <g class="layout">${sheetLayout(material, s.placements, s.cuts, null, s.parked)}</g></svg>`;
+    }
+
+    // Parked panels sit in rows in a strip under the sheet, at the diagram's scale, wrapping at the
+    // sheet's length. Returns the strip's height (0 when nothing is parked) and each panel's spot.
+    function parkingStrip(material, parked = []) {
+      if (!parked.length) return { height: 0, spots: [] };
+      const { length: L, width: W } = material;
+      const gap = Math.max(L, W) / 60;
+      const top = W + gap; // strip outline
+      let x = gap, y = top + 2.2 * gap, rowH = 0; // below the strip's caption
+      const spots = parked.map((p) => {
+        if (x > gap && x + p.w > L - gap) {
+          x = gap;
+          y += rowH + gap;
+          rowH = 0;
+        }
+        const spot = { x, y };
+        x += p.w + gap;
+        rowH = Math.max(rowH, p.h);
+        return spot;
+      });
+      return { top, gap, spots, height: y + rowH + gap - W };
     }
 
     // Snap targets on the cut lines (used while they're shown): where each line meets another
@@ -757,7 +783,7 @@
     // The sheet drawing. While dragging (drag = { i, valid, ghost: {x, y, w, h} }) panel i is outlined
     // at its new place, a ghost follows the pointer (dark grey where the panel can't go) and
     // cut lines are left out.
-    function sheetLayout(material, placements, cuts, drag) {
+    function sheetLayout(material, placements, cuts, drag, parked) {
       const { length: L, width: W, trim: t } = material;
       const font = Math.max(L, W) / 60;
       const c = colorOf(material.color);
@@ -771,25 +797,47 @@
           ? `<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" fill="${drag.valid ? c.fill : 'none'}" fill-opacity="0.45"
               stroke="#222" stroke-width="2" stroke-dasharray="6 4" vector-effect="non-scaling-stroke"/>`
           : `<rect class="panel" data-i="${i}" x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" fill="${c.fill}" stroke="${c.stroke}" stroke-width="1.5"/>`;
-        if (moving) return;
-        // Text runs along the panel's longest edge (bottom-to-top on tall panels). Dimensions are
-        // always shown in full (font shrinks to fit); the label is shortened with "…" if needed.
-        const vertical = p.h > p.w;
-        const along = (vertical ? p.h : p.w) * 0.9;
-        const across = vertical ? p.w : p.h;
-        const dims = `${fmt(p.w)} × ${fmt(p.h)}${p.rotated ? ' ↻' : ''}`;
-        const f = Math.min(font, across / 3, along / (0.85 * textWidth(dims, 1)));
-        if (f < font / 6) return; // too small to read
-        const label = fitText(p.label, along, f);
-        const cx = p.x + p.w / 2, cy = p.y + p.h / 2;
-        out += `<g transform="translate(${cx} ${cy})${vertical ? ' rotate(-90)' : ''}" text-anchor="middle" fill="${c.text}" pointer-events="none">
-          <text y="${-f * 0.2}" font-size="${f}">${esc(label)}</text>
-          <text y="${f * 1.1}" font-size="${f * 0.85}">${esc(dims)}</text></g>`;
+        if (!moving) out += panelText(p, c, font);
       });
+      out += parkedSvg(material, parked, c, font, drag?.parked);
       if (!drag) return out + cutsSvg(cuts, font);
       const { x, y, w, h } = drag.ghost;
       return out + `<rect x="${x}" y="${y}" width="${w}" height="${h}" pointer-events="none"
         fill="${drag.valid ? c.fill : '#4a4a4a'}" fill-opacity="${drag.valid ? 0.75 : 0.9}" stroke="#222" stroke-width="1.5"/>`;
+    }
+
+    // The parking strip with its panels; skip = index of a parked panel being dragged out.
+    function parkedSvg(material, parked, c, font, skip) {
+      const strip = parkingStrip(material, parked);
+      if (!strip.height) return '';
+      const { gap, top } = strip;
+      let out = `<rect x="0" y="${top}" width="${material.length}" height="${material.width + strip.height - top}" fill="none"
+          stroke="#c53030" stroke-width="1.5" stroke-dasharray="8 6" vector-effect="non-scaling-stroke"/>
+        <text x="${gap}" y="${top + 1.6 * gap}" font-size="${font * 0.8}" fill="#c53030">Parked — not in the cut list</text>`;
+      parked.forEach((p, k) => {
+        if (k === skip) return;
+        const q = { ...p, ...strip.spots[k] };
+        out += `<rect class="panel" data-parked="${k}" x="${q.x}" y="${q.y}" width="${q.w}" height="${q.h}" fill="${c.fill}" stroke="${c.stroke}" stroke-width="1.5"/>`
+          + panelText(q, c, font);
+      });
+      return out;
+    }
+
+    // A panel's label and dimensions. Text runs along the panel's longest edge (bottom-to-top on
+    // tall panels). Dimensions are always shown in full (font shrinks to fit); the label is
+    // shortened with "…" if needed.
+    function panelText(p, c, font) {
+      const vertical = p.h > p.w;
+      const along = (vertical ? p.h : p.w) * 0.9;
+      const across = vertical ? p.w : p.h;
+      const dims = `${fmt(p.w)} × ${fmt(p.h)}${p.rotated ? ' ↻' : ''}`;
+      const f = Math.min(font, across / 3, along / (0.85 * textWidth(dims, 1)));
+      if (f < font / 6) return ''; // too small to read
+      const label = fitText(p.label, along, f);
+      const cx = p.x + p.w / 2, cy = p.y + p.h / 2;
+      return `<g transform="translate(${cx} ${cy})${vertical ? ' rotate(-90)' : ''}" text-anchor="middle" fill="${c.text}" pointer-events="none">
+        <text y="${-f * 0.2}" font-size="${f}">${esc(label)}</text>
+        <text y="${f * 1.1}" font-size="${f * 0.85}">${esc(dims)}</text></g>`;
     }
 
     function cutListTable(cuts = []) {
@@ -821,23 +869,28 @@
     // Drag a panel to another place on the same sheet; the others re-pack around it (Arrange).
     // A press without movement stays a click, for the measuring tool. Dropping where the panel
     // can't go (dark grey) snaps back; a valid drop updates the cut lines and the cut list.
-    // R while dragging turns the panel 90°.
+    // R while dragging turns the panel 90°. P parks it in a strip under the sheet, out of the cut
+    // list, leaving the others where they are; parked panels are dragged back onto the sheet.
 
     const DRAG_PX = 4;
-    let arranging = null; // { svg, gi, si, i, start, grab, tree, turned, pointer, preview, valid, moved }
+    // { svg, gi, si, i, parked, start, grab, tree, turned, pointer, preview, valid, moved }; parked is
+    // the index of a panel being dragged out of the parking strip (then i is past the placements).
+    let arranging = null;
     let suppressClick = false;
 
     results.addEventListener('pointerdown', (e) => {
       const rect = e.target.closest('rect.panel');
       if (!rect || e.button !== 0 || measure) return;
       const block = rect.closest('.sheet');
-      const gi = +block.dataset.g, si = +block.dataset.s, i = +rect.dataset.i;
+      const gi = +block.dataset.g, si = +block.dataset.s;
       const { material } = current.result.groups[gi];
       const sheet = current.result.groups[gi].sheets[si];
       const svg = rect.ownerSVGElement;
       const point = toSvg(svg, e);
-      const p = sheet.placements[i];
-      arranging = { svg, gi, si, i, start: { x: e.clientX, y: e.clientY }, grab: { x: point.x - p.x, y: point.y - p.y },
+      const parked = rect.dataset.parked === undefined ? undefined : +rect.dataset.parked;
+      const i = parked === undefined ? +rect.dataset.i : sheet.placements.length;
+      const at = { x: +rect.getAttribute('x'), y: +rect.getAttribute('y') };
+      arranging = { svg, gi, si, i, parked, start: { x: e.clientX, y: e.clientY }, grab: { x: point.x - at.x, y: point.y - at.y },
         tree: Cutlist.layoutTree(sheet.placements, material, current.inputs.kerf, current.inputs.algorithm), turned: false, moved: false };
       e.preventDefault(); // no text selection while dragging
     });
@@ -855,10 +908,16 @@
       updateArranging(a);
     });
 
+    // The sheet's placements, plus the panel being dragged out of the parking strip (if any).
+    function dragPlacements(a) {
+      const sheet = current.result.groups[a.gi].sheets[a.si];
+      return a.parked === undefined ? sheet.placements : [...sheet.placements, sheet.parked[a.parked]];
+    }
+
     // Preview the arrangement for the current pointer position (and rotation).
     function updateArranging(a) {
       const { material, sheets } = current.result.groups[a.gi];
-      let placements = sheets[a.si].placements;
+      let placements = dragPlacements(a);
       if (a.turned) {
         const p = placements[a.i];
         placements = placements.map((q, j) => (j === a.i ? { ...p, w: p.h, h: p.w, rotated: !p.rotated } : q));
@@ -870,14 +929,15 @@
       const r = Arrange.move({ placements, tree: a.tree, i: a.i, target: ghost, material, kerf: current.inputs.kerf });
       a.valid = onSheet && r.valid;
       a.preview = a.valid ? r.placements : sheets[a.si].placements;
-      a.svg.querySelector('.layout').innerHTML = sheetLayout(material, a.preview, [], { i: a.i, valid: a.valid, ghost });
+      a.svg.querySelector('.layout').innerHTML = sheetLayout(material, a.preview, [], { i: a.i, parked: a.parked, valid: a.valid, ghost },
+        sheets[a.si].parked);
     }
 
     // Turn the dragged panel 90° clockwise about the pointer.
     function turnArranging() {
       const a = arranging;
       if (!a?.moved) return;
-      const p = current.result.groups[a.gi].sheets[a.si].placements[a.i];
+      const p = dragPlacements(a)[a.i];
       const h = a.turned ? p.w : p.h; // height of the ghost before turning
       a.grab = { x: h - a.grab.y, y: a.grab.x };
       a.turned = !a.turned;
@@ -893,16 +953,47 @@
       setTimeout(() => { suppressClick = false; });
       const { material, sheets } = current.result.groups[a.gi];
       const sheet = sheets[a.si];
-      const changed = commit && a.valid
-        && a.preview.some((p, j) => p.x !== sheet.placements[j].x || p.y !== sheet.placements[j].y || p.w !== sheet.placements[j].w);
+      const unparked = a.parked !== undefined && commit && a.valid;
+      const changed = unparked || (commit && a.valid
+        && a.preview.some((p, j) => p.x !== sheet.placements[j].x || p.y !== sheet.placements[j].y || p.w !== sheet.placements[j].w));
       if (changed) {
         sheet.placements = a.preview;
-        sheet.cuts = Cutlist.sheetCuts(sheet.placements, material, current.inputs.kerf, current.inputs.algorithm);
-        sheet.manual = true;
-        current.manual = true;
-        markDirty();
+        if (unparked) sheet.parked = sheet.parked.filter((_, k) => k !== a.parked);
+        sheetChanged(a, unparked);
+      } else {
+        a.svg.closest('.sheet').outerHTML = sheetBlock(a.gi, a.si);
       }
-      a.svg.closest('.sheet').outerHTML = sheetBlock(a.gi, a.si);
+    }
+
+    // After the sheet's panels changed: new cuts, marked as arranged by hand, redrawn. When panels
+    // were parked or unparked, the material's stats change too, so its whole block is redrawn.
+    function sheetChanged(a, countsChanged) {
+      const group = current.result.groups[a.gi];
+      const sheet = group.sheets[a.si];
+      sheet.cuts = Cutlist.sheetCuts(sheet.placements, group.material, current.inputs.kerf, current.inputs.algorithm);
+      sheet.manual = true;
+      current.manual = true;
+      markDirty();
+      if (!countsChanged) return void (a.svg.closest('.sheet').outerHTML = sheetBlock(a.gi, a.si));
+      group.stats = Cutlist.stats(group.sheets, group.material);
+      a.svg.closest('.material').outerHTML = renderGroup(group, a.gi);
+      if (measure && !measure.svg.isConnected) measure = null;
+    }
+
+    // Park the dragged panel (as currently turned) in the strip under its sheet.
+    function parkArranging() {
+      const a = arranging;
+      if (!a?.moved || a.parked !== undefined) return;
+      arranging = null;
+      document.body.classList.remove('arranging');
+      const sheet = current.result.groups[a.gi].sheets[a.si];
+      const { x, y, ...p } = sheet.placements[a.i];
+      sheet.parked = [...(sheet.parked ?? []), a.turned ? { ...p, w: p.h, h: p.w, rotated: !p.rotated } : p];
+      sheet.placements = sheet.placements.filter((_, j) => j !== a.i);
+      sheetChanged(a, true);
+      // The button is still down: its release must not start a measurement.
+      suppressClick = true;
+      addEventListener('pointerup', () => setTimeout(() => { suppressClick = false; }), { once: true });
     }
     addEventListener('pointerup', () => endArranging(true));
     addEventListener('pointercancel', () => endArranging(false));
@@ -911,6 +1002,10 @@
       if ((e.key === 'r' || e.key === 'R') && !e.repeat && arranging?.moved) {
         e.preventDefault();
         turnArranging();
+      }
+      if ((e.key === 'p' || e.key === 'P') && !e.repeat && arranging?.moved) {
+        e.preventDefault();
+        parkArranging();
       }
     });
 

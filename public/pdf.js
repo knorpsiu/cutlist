@@ -248,6 +248,17 @@
       }
       if (showCuts) drawCuts(sheet.cuts || [], x0, y0, scale);
       y += h;
+      if (sheet.parked?.length) {
+        const counts = {};
+        for (const p of sheet.parked) {
+          const key = `${p.label} (${fmt(p.w)} × ${fmt(p.h)})`;
+          counts[key] = (counts[key] || 0) + 1;
+        }
+        ensure(16);
+        y += 13;
+        pdf.text(fit(`${sheet.parked.length} panel(s) parked, not on this sheet or in its cut list: `
+          + Object.entries(counts).map(([k, c]) => `${c} × ${k}`).join(', '), CONTENT_W, 9), MARGIN, y, { size: 9, color: RED });
+      }
     }
 
     // Cut lines in saw order, numbered near the start of each line (as on screen).
