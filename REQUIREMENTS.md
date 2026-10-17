@@ -107,6 +107,8 @@ Diagram labels (screen and PDF):
 - A valid drop updates the cut lines and cut list and labels the sheet "arranged by hand" (also in the PDF).
 - The arrangement is saved with the project, along with a key of the inputs it was made from (kerf, layout, sheet sizes/qty/trim, panels). Opening the project shows it again if the inputs are unchanged. Optimize (or changing the layout type) discards it. Export PDF uses what is on screen if it still matches the form.
 - P while dragging parks the panel (as currently turned) in a strip under its sheet, so the rest can be rearranged with it out of the way. Any number of panels can be parked per sheet; they sit in rows at the diagram's scale. The other panels stay where they are (the next drag closes the gap). Parked panels are not in the cut lines, the cut list or the counts/yield; the sheet heading shows "N parked, not in the cut list", and the PDF lists them under the sheet.
+- Each parked panel shows a warning sign (⚠ triangle) in its top-left corner.
+- Re-optimizing over a manual arrangement asks first ("Are you sure you want to re-optimize? You have manually laid panels on N sheets (M panels parked)…"): the Optimize button, changing the layout type (cancel restores the shown layout's type) and Export PDF when the inputs no longer match.
 - A parked panel is dragged back onto the sheet like any other (R works too); an invalid drop leaves it parked. Parked panels are saved with the arrangement; Optimize clears them.
 - Not in this step: moving panels between sheets (a per-material parking strip could carry panels across later).
 
@@ -144,3 +146,4 @@ Diagram labels (screen and PDF):
 | 2026-10-17 | Parking (P while dragging): a strip per sheet holding any number of panels taken out of the layout, so others can be rearranged first. Chosen over leaving an overlapping panel on the sheet, which the cut-tree model can't represent. Parking leaves the other panels in place. |
 | 2026-10-17 | Measuring also snaps to cut-line junctions (ends of each cut and panel edges meeting it), only while cuts are shown. Points beside a kerf move onto the crossing cut's centre line so each junction is one point. |
 | 2026-10-17 | "How to use" instructions under the page description (collapsible, open by default; closing it is remembered per browser). Keep them in step with new features. |
+| 2026-10-17 | Confirm before re-optimizing over a manual arrangement (native `confirm()`, like the unsaved-changes prompt). Parked panels get a warning sign on screen; the PDF already lists them in red. |

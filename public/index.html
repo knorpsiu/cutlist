@@ -105,7 +105,7 @@
     <ul>
       <li>Drag a panel to another place on its sheet; the others move to make room. Dark grey means it can't go there: dropping puts it back. <kbd>Esc</kbd> cancels.</li>
       <li>While dragging, <kbd>R</kbd> turns the panel 90° and <kbd>P</kbd> parks it under the sheet, out of the way, to rearrange the rest. Drag parked panels back onto the sheet; they are not in the cut list while parked.</li>
-      <li>Clicking <strong>Optimize</strong> again replaces your arrangement.</li>
+      <li>Parked panels carry a ⚠ sign. Clicking <strong>Optimize</strong> again (or changing the layout) replaces your arrangement, after asking you to confirm.</li>
     </ul>
     <h4>5. Save</h4>
     <ul>
@@ -165,7 +165,11 @@
     const algorithmSelect = document.getElementById('algorithm');
     algorithmSelect.innerHTML = Object.entries(Cutlist.ALGORITHMS).map(([value, name]) => `<option value="${value}">${name}</option>`).join('');
     // Switching layout re-runs the optimizer if results are showing.
-    algorithmSelect.addEventListener('change', () => results.querySelector('svg') && runOptimize());
+    algorithmSelect.addEventListener('change', () => {
+      if (!results.querySelector('svg')) return;
+      if (confirmReoptimize()) runOptimize();
+      else algorithmSelect.value = current.inputs.algorithm; // keep the layout that is shown
+    });
     const panelsBody = document.getElementById('panels');
     const results = document.getElementById('results');
     const newId = () => `m${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
@@ -619,7 +623,7 @@
 
     document.getElementById('addMaterial').onclick = () => { addMaterialRow(); markDirty(); };
     document.getElementById('addPanel').onclick = () => { addPanelRow(); markDirty(); };
-    document.getElementById('optimize').onclick = runOptimize;
+    document.getElementById('optimize').onclick = () => confirmReoptimize() && runOptimize();
     document.getElementById('exportPdf').onclick = exportPdf;
 
     // Cut lines are drawn always and hidden with CSS, so toggling needs no re-render.
@@ -682,7 +686,16 @@
       return { kerf, algorithm, materials, panels };
     }
 
-    // Optimizing replaces any manual arrangement.
+    // Optimizing replaces any manual arrangement, so ask first if there is one.
+    function confirmReoptimize() {
+      if (!current?.manual) return true;
+      const sheets = current.result.groups.flatMap((g) => g.sheets);
+      const manual = sheets.filter((s) => s.manual).length;
+      const parked = sheets.reduce((n, s) => n + (s.parked?.length ?? 0), 0);
+      return confirm(`Are you sure you want to re-optimize?\n\nYou have manually laid panels on ${manual} sheet${manual === 1 ? '' : 's'}${
+        parked ? ` (${parked} panel${parked === 1 ? '' : 's'} parked)` : ''}. Optimizing replaces that arrangement.`);
+    }
+
     function runOptimize() {
       const inputs = optimizeForm();
       if (!inputs) return null;
@@ -696,7 +709,10 @@
       let inputs = optimizeForm();
       if (!inputs) return;
       // Export what is on screen (possibly rearranged by hand) if it still matches the form.
-      if (current?.key !== inputsKey(inputs)) inputs = runOptimize();
+      if (current?.key !== inputsKey(inputs)) {
+        if (!confirmReoptimize()) return;
+        inputs = runOptimize();
+      }
       const run = { ...inputs, result: current.result };
       const name = projectName.value.trim();
       const bytes = CutlistPdf.buildReport({
@@ -860,9 +876,18 @@
         if (k === skip) return;
         const q = { ...p, ...strip.spots[k] };
         out += `<rect class="panel" data-parked="${k}" x="${q.x}" y="${q.y}" width="${q.w}" height="${q.h}" fill="${c.fill}" stroke="${c.stroke}" stroke-width="1.5"/>`
-          + panelText(q, c, font);
+          + panelText(q, c, font) + warningSign(q, font);
       });
       return out;
+    }
+
+    // A warning triangle in the top-left corner of a parked panel: it isn't cut until it's back on the sheet.
+    function warningSign(p, font) {
+      const z = Math.min(font * 1.3, p.w / 2.5, p.h / 2.5);
+      const pad = z * 0.25;
+      return `<g transform="translate(${p.x + pad} ${p.y + pad})" pointer-events="none">
+        <path d="M${z / 2} 0 L${z} ${z * 0.9} L0 ${z * 0.9} Z" fill="#f6c343" stroke="#7a5b00" stroke-width="${z * 0.06}" stroke-linejoin="round"/>
+        <text x="${z / 2}" y="${z * 0.8}" font-size="${z * 0.62}" font-weight="700" text-anchor="middle" fill="#222">!</text></g>`;
     }
 
     // A panel's label and dimensions. Text runs along the panel's longest edge (bottom-to-top on
