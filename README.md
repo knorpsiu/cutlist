@@ -61,7 +61,7 @@ So I built my own. **cutlist** is free, open source and yours to copy, change an
 You only need [Node.js](https://nodejs.org/) **22.13 or newer**. There is nothing to install: no packages, no build step.
 
 ```sh
-git clone https://github.com/USERNAME/cutlist.git
+git clone https://github.com/knorpsiu/cutlist.git
 cd cutlist
 npm start
 ```
