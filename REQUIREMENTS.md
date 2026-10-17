@@ -78,7 +78,7 @@ Diagram labels (screen and PDF):
 
 ### MVP-6 — measuring tool in the diagrams ✅
 - On-screen cut diagrams only (not the PDF).
-- Snap targets: every panel corner, the sheet's outer corners and the edge-trim corners. Hovering within ~10 px of one shows a red snap ring; the cursor is a crosshair.
+- Snap targets: every panel corner, the sheet's outer corners and the edge-trim corners. While cut lines are shown, also the points where a cut line meets another cut, a panel edge or the trim/sheet edge (placed on the cut's centre line). Hovering within ~10 px of one shows a red snap ring; the cursor is a crosshair.
 - Clicking a corner starts a measurement: a dotted line from that corner follows the mouse; its end snaps to nearby corners (exact corner-to-corner values), otherwise follows the mouse freely.
 - Label next to the cursor: straight-line distance plus horizontal/vertical components, e.g. `947.26 (Δx 560, Δy 764)`; flips to stay inside the sheet.
 - Only one active measurement: the next click anywhere (or Escape) clears it. A click away from a corner does not start one.
@@ -139,3 +139,4 @@ Diagram labels (screen and PDF):
 | 2026-10-16 | MVP-9: manual arrangement by drag-and-drop within a sheet; re-pack in saw order (cut tree) rather than swap or free placement; invalid drop snaps back; saved arrangement shown on open only while the inputs are unchanged. |
 | 2026-10-16 | R rotates the dragged panel. Dropping on free sheet counts as valid even when packing pulls the panel some distance to its slot (grey only over other panels or off the sheet). |
 | 2026-10-16 | Shift-measuring also snaps the line's end to the edge trim lines it crosses (same 10 px reach as corners; the closer of a corner and a trim line wins). |
+| 2026-10-17 | Measuring also snaps to cut-line junctions (ends of each cut and panel edges meeting it), only while cuts are shown. Points beside a kerf move onto the crossing cut's centre line so each junction is one point. |

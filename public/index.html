@@ -725,8 +725,33 @@
       if (t > 0) addCorners(t, t, L - 2 * t, W - 2 * t);
       for (const p of s.placements) addCorners(p.x, p.y, p.w, p.h);
       return `<svg viewBox="-2 -2 ${L + 4} ${W + 4}" xmlns="http://www.w3.org/2000/svg"
-        data-corners="${[...corners].join(';')}" data-length="${L}" data-width="${W}" data-trim="${t}">
+        data-corners="${[...corners].join(';')}" data-cut-points="${cutPoints(s).join(';')}"
+        data-length="${L}" data-width="${W}" data-trim="${t}">
         <g class="layout">${sheetLayout(material, s.placements, s.cuts)}</g></svg>`;
+    }
+
+    // Snap targets on the cut lines (used while they're shown): where each line meets another
+    // cut, a panel edge or the trim/sheet edge. Lines and panel edges stop at the side of a kerf,
+    // so points within a kerf of a crossing cut move onto its centre line, where they meet.
+    function cutPoints({ cuts = [], placements }) {
+      const reach = (current?.inputs.kerf ?? 0) / 2 + 1e-6;
+      const points = new Set();
+      for (const c of cuts) {
+        const across = cuts.filter((d) => d.dir !== c.dir && c.at >= d.from - reach && c.at <= d.to + reach);
+        const add = (along) => {
+          const d = across.find((d) => Math.abs(d.at - along) <= reach);
+          if (d) along = d.at;
+          points.add(c.dir === 'h' ? `${along},${c.at}` : `${c.at},${along}`);
+        };
+        add(c.from);
+        add(c.to);
+        for (const p of placements) {
+          const [lo, hi, a, b] = c.dir === 'h' ? [p.y, p.y + p.h, p.x, p.x + p.w] : [p.x, p.x + p.w, p.y, p.y + p.h];
+          if (Math.abs(lo - c.at) > reach && Math.abs(hi - c.at) > reach) continue;
+          for (const v of [a, b]) if (v > c.from && v < c.to) add(v);
+        }
+      }
+      return [...points];
     }
 
     // The sheet drawing. While dragging (drag = { i, valid, ghost: {x, y, w, h} }) panel i is outlined
@@ -890,9 +915,10 @@
     });
 
     // ---- Measuring tool --------------------------------------------------------------------
-    // Click a corner to start; a dotted line follows the mouse (snapping to nearby corners) with
-    // a distance label. Holding Shift keeps the line horizontal or vertical, and its end also snaps
-    // to the edge trim lines it crosses. The next click, or Escape, clears it.
+    // Click a corner to start; a dotted line follows the mouse with a distance label, snapping to
+    // nearby corners and, when they're shown, to the ends and junctions of the cut lines. Holding
+    // Shift keeps the line horizontal or vertical, and its end also snaps to the edge trim lines
+    // it crosses. The next click, or Escape, clears it.
 
     const SNAP_PX = 10;
     const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -903,12 +929,17 @@
     const pxPerUnit = (svg) => svg.getScreenCTM().a;
     const toSvg = (svg, e) => new DOMPoint(e.clientX, e.clientY).matrixTransform(svg.getScreenCTM().inverse());
 
+    const parsePoints = (data) => (data ? data.split(';') : []).map((c) => {
+      const [x, y] = c.split(',').map(Number);
+      return { x, y };
+    });
+
+    // Snap points: corners, plus points on the cut lines when those are shown.
     function cornersOf(svg) {
-      svg._corners ??= svg.dataset.corners.split(';').map((c) => {
-        const [x, y] = c.split(',').map(Number);
-        return { x, y };
-      });
-      return svg._corners;
+      svg._corners ??= parsePoints(svg.dataset.corners);
+      if (results.classList.contains('hide-cuts')) return svg._corners;
+      svg._withCuts ??= svg._corners.concat(parsePoints(svg.dataset.cutPoints));
+      return svg._withCuts;
     }
 
     function nearestCorner(svg, p) {
