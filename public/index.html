@@ -713,6 +713,9 @@
         if (!confirmReoptimize()) return;
         inputs = runOptimize();
       }
+      const parked = current.result.groups.reduce((n, g) => n + g.sheets.reduce((m, s) => m + (s.parked?.length ?? 0), 0), 0);
+      if (parked && !confirm(`${parked} parked panel${parked === 1 ? ' is' : 's are'} left out of the PDF: not drawn on the sheets and not in the cut lists `
+        + '(only listed under their sheet as parked).\n\nExport anyway?')) return;
       const run = { ...inputs, result: current.result };
       const name = projectName.value.trim();
       const bytes = CutlistPdf.buildReport({
