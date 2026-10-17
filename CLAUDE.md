@@ -39,7 +39,7 @@ Zero dependencies: no npm packages, no build step, no framework. Plain HTML/JS i
 
 - **MVP approach:** small, usable increments. Don't front-load features; put ideas in the `REQUIREMENTS.md` backlog.
 - **Stay dependency-free** unless the user agrees otherwise.
-- **After each tested feature:** update `REQUIREMENTS.md` (iteration notes + decision log), then commit locally. No remote exists, so don't push.
+- **After each tested feature:** update `REQUIREMENTS.md` (iteration notes + decision log), and the "How to use" section at the top of `public/index.html` if users need to know about it, then commit locally. No remote exists, so don't push.
 - Match the existing style: 2-space indent, single quotes, short comments explaining *why*.
 
 ## Testing

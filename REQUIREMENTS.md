@@ -143,3 +143,4 @@ Diagram labels (screen and PDF):
 | 2026-10-16 | Shift-measuring also snaps the line's end to the edge trim lines it crosses (same 10 px reach as corners; the closer of a corner and a trim line wins). |
 | 2026-10-17 | Parking (P while dragging): a strip per sheet holding any number of panels taken out of the layout, so others can be rearranged first. Chosen over leaving an overlapping panel on the sheet, which the cut-tree model can't represent. Parking leaves the other panels in place. |
 | 2026-10-17 | Measuring also snaps to cut-line junctions (ends of each cut and panel edges meeting it), only while cuts are shown. Points beside a kerf move onto the crossing cut's centre line so each junction is one point. |
+| 2026-10-17 | "How to use" instructions under the page description (collapsible, open by default; closing it is remembered per browser). Keep them in step with new features. |

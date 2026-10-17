@@ -9,7 +9,13 @@
     body { font-family: system-ui, sans-serif; margin: 0 auto; max-width: 1100px; padding: 16px; color: #222; }
     h1 { margin: 0 0 4px; display: flex; align-items: center; gap: 10px; }
     h1 .logo { width: 36px; height: 36px; }
-    .sub { color: #666; margin: 0 0 20px; }
+    .sub { color: #666; margin: 0 0 12px; }
+    .help { font-size: 14px; color: #333; background: #f7f9fc; border: 1px solid #dde3ea; border-radius: 6px; padding: 8px 16px; margin: 0 0 20px; }
+    .help summary { cursor: pointer; font-weight: 600; }
+    .help h4 { margin: 12px 0 2px; font-size: 14px; }
+    .help ul { margin: 0; padding-left: 20px; }
+    .help li { margin: 2px 0; }
+    .help kbd { font: 12px ui-monospace, monospace; border: 1px solid #bbb; border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; background: #fff; }
     fieldset { border: 1px solid #ccc; border-radius: 6px; margin: 0 0 16px; padding: 12px 16px; overflow-x: auto; }
     legend { font-weight: 600; padding: 0 6px; }
     .row { display: flex; flex-wrap: wrap; gap: 12px; }
@@ -76,6 +82,36 @@
 <body>
   <h1><img class="logo" src="favicon.svg" alt="">cutlist</h1>
   <p class="sub">Sheet goods cut optimizer. Use any unit (mm or inches) — just be consistent.</p>
+  <details class="help" id="help" open>
+    <summary>How to use</summary>
+    <h4>1. Enter what you have and what you need</h4>
+    <ul>
+      <li><strong>Sheet goods:</strong> one row per material, with its size, how many sheets you have, the <em>edge trim</em> (the strip cut off each edge to square it up; 0 for none) and a colour for the diagrams. Set the <em>blade kerf</em> (saw blade thickness).</li>
+      <li><strong>Panels:</strong> label, length, width, quantity and material for each part to cut. Panels may be turned 90° to fit; turned ones are marked ↻.</li>
+      <li>Number fields accept arithmetic, e.g. <code>=600-2*18</code>. Drag the ⠿ handle to reorder rows.</li>
+    </ul>
+    <h4>2. Optimize</h4>
+    <ul>
+      <li>Pick a <strong>Layout</strong>: rip first (full-length strips), crosscut first (full-width strips) or best fit, then click <strong>Optimize</strong>.</li>
+      <li>Each sheet shows its layout with numbered red cut lines in saw order, and a cut list below: <em>Set at</em> is the fence setting (width cut off). <strong>Show cuts</strong> hides or shows them.</li>
+      <li><strong>Export PDF</strong> saves the inputs and layouts (as shown on screen) for the workshop.</li>
+    </ul>
+    <h4>3. Measure on a diagram</h4>
+    <ul>
+      <li>Click near a corner to start measuring, move to another point to read the distance, click again (or <kbd>Esc</kbd>) to clear. The ends snap to panel and sheet corners and to where cut lines meet.</li>
+      <li>Hold <kbd>Shift</kbd> for a horizontal or vertical measurement; it also snaps to the edge trim lines.</li>
+    </ul>
+    <h4>4. Rearrange by hand</h4>
+    <ul>
+      <li>Drag a panel to another place on its sheet; the others move to make room. Dark grey means it can't go there: dropping puts it back. <kbd>Esc</kbd> cancels.</li>
+      <li>While dragging, <kbd>R</kbd> turns the panel 90° and <kbd>P</kbd> parks it under the sheet, out of the way, to rearrange the rest. Drag parked panels back onto the sheet; they are not in the cut list while parked.</li>
+      <li>Clicking <strong>Optimize</strong> again replaces your arrangement.</li>
+    </ul>
+    <h4>5. Save</h4>
+    <ul>
+      <li>Name the project and click <strong>Save</strong>; open it later from the <strong>Open</strong> list. A hand-made arrangement is saved too, and shown again while the inputs are unchanged.</li>
+    </ul>
+  </details>
 
   <fieldset>
     <legend>Project</legend>
@@ -588,6 +624,12 @@
 
     // Cut lines are drawn always and hidden with CSS, so toggling needs no re-render.
     // A viewing preference, not project data: remembered per browser.
+    // The instructions stay closed once the user closes them.
+    const HELP_KEY = 'cutlist.helpOpen';
+    const help = document.getElementById('help');
+    try { help.open = localStorage.getItem(HELP_KEY) !== '0'; } catch {}
+    help.addEventListener('toggle', () => { try { localStorage.setItem(HELP_KEY, help.open ? '1' : '0'); } catch {} });
+
     const SHOW_CUTS_KEY = 'cutlist.showCuts';
     const showCuts = document.getElementById('showCuts');
     try { showCuts.checked = localStorage.getItem(SHOW_CUTS_KEY) !== '0'; } catch {}
